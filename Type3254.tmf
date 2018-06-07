@@ -1,0 +1,822 @@
+#ESI!
+4.0
+Variable capacity heat pump
+0
+
+
+
+1
+
+2
+2
+May 31, 2018
+
+May 31, 2018
+1
+
+noowner
+__
+__
+__
+1
+
+0
+0
+0
+0
+0
+0
+__
+__
+__
+1
+
+0
+__
+__
+__
+__
+0
+0
+__
+
+__
+__
+__
+42
+Inlet air temperature
+SN
+1
+The dry-bulb temperature of the air entering the indoor unit of the heat pump. This air is typically at room air conditions.
+simple
+real
+1
++
+-Inf
++Inf
+[ ; ]
+0
+0
+C
+Temperature
+Inlet air humidity ratio
+SN
+1
+The absolute humidity ratio of the air entering the indoor unit of the heat pump. This air is typically at room air conditions.
+simple
+real
+1
++
+0.0
++Inf
+[ ; ]
+0
+0
+-
+Dimensionless
+Inlet air % RH
+SN
+1
+The percent relative humidity of the air entering the indoor unit of the heat pump. This air is typically at room air conditions.
+simple
+real
+1
++
+0.0
+100.0
+[ ; ]
+50.0
+0
+% (base 100)
+Percentage
+Inlet air flow rate
+SN
+1
+The air flow rate entering the indoor unit of the heat pump.
+simple
+real
+1
++
+0.0
++Inf
+[ ; ]
+0
+0
+kg/hr
+Flow Rate
+Inlet air pressure
+SN
+1
+The absolute pressure of the air entering the indoor unit of the heat pump. This air is typically at room air conditions.
+simple
+real
+1
++
+0.0
++Inf
+[ ; ]
+0
+0
+atm
+Pressure
+Outside air temperature
+SN
+1
+The temperature of the air entering the outdoor unit of the heat pump. This value is typically the ambient temperature.
+simple
+real
+1
++
+-Inf
++Inf
+[ ; ]
+0
+0
+C
+Temperature
+Outlet air temperature
+SN
+1
+The dry-bulb temperature of the air exiting the indoor unit of the heat pump.
+simple
+real
+2
++
+-Inf
++Inf
+[ ; ]
+0
+0
+C
+Temperature
+Control mode
+SN
+4
+This parameter indicates whether an external controller is used to maintain the temperature or not:
+1 = internal embedded controller,
+2 = external controller (user defined).
+An external controller must provide the compressor frequency (input 7), while the internal controller requires the temperature setpoint (input 8) and the temperature measurment (input 9).
+simple
+integer
+3
++
+1
+2
+[ ; ]
+1
+0
+-
+Dimensionless
+Humidity mode
+SN
+3
+This parameter indicates which input to this model will be used for the moist air calculations:
+1 = humidity ratio,
+2 = percent relative humidity.
+simple
+integer
+3
++
+1
+2
+[ ; ]
+1
+0
+-
+Dimensionless
+Logical Unit - cooling mode
+SN
+1
+The logical unit which will be ASSIGNed to the data file which contains the heat pump cooling performance data.  Logical units must be unique integers greater than 10 in any TRNSYS input file.
+simple
+integer
+3
++
+10
++Inf
+[ ; ]
+30
+0
+-
+Dimensionless
+Number of indoor dry-bulb temperatures
+SN
+1
+The number of indoor inlet dry-bulb temperatures for which data is provided in the cooling performance data file.
+simple
+integer
+3
++
+2
++Inf
+[ ; ]
+4
+0
+-
+Dimensionless
+Number of indoor wet-bulb temperatures
+SN
+1
+The number of indoor inlet wet-bulb temperatures for which data is provided in the cooling performance data file.
+simple
+integer
+3
++
+2
++Inf
+[ ; ]
+3
+0
+-
+Dimensionless
+Number of air flow rates
+SN
+1
+The number of normalized air flow rates for which heating AND cooling performance data is supplied in the associated data file.
+simple
+integer
+3
++
+2
++Inf
+[ ; ]
+3
+0
+-
+Dimensionless
+Number of outdoor dry-bulb temperatures
+SN
+1
+The number of outdoor inlet dry-bulb temperatures for which data is provided in the cooling performance data file.
+simple
+integer
+3
++
+2
++Inf
+[ ; ]
+5
+0
+-
+Dimensionless
+Compressor frequency
+SN
+1
+The frequency of the compressor, to be provided if an external controller is used.
+simple
+real
+1
++
+0.0
++Inf
+[ ; ]
+0
+0
+1/S
+Frequency
+Indoor air temperature setpoint
+SN
+1
+The setpoint of the indoor room temperature, to be provided if no external controller is used.
+simple
+real
+1
++
+-Inf
++Inf
+[ ; ]
+0
+0
+C
+Temperature
+Outlet air humidity ratio
+SN
+1
+The absolute humidity ratio of the air exiting the indoor unit of the heat pump.
+simple
+real
+2
++
+0.0
++Inf
+[ ; ]
+0
+0
+-
+Dimensionless
+Outlet air % RH
+SN
+1
+The percent relative humidity of the air exiting the indoor unit of the heat pump.
+simple
+real
+2
++
+0.0
+100
+[ ; ]
+0
+0
+% (base 100)
+Percentage
+Outlet air flow rate
+SN
+1
+The flow rate of dry air exiting the indoor unit of the heat pump.
+simple
+real
+2
++
+0.0
++Inf
+[ ; ]
+0
+0
+kg/hr
+Flow Rate
+Outlet air pressure
+SN
+1
+The absolute air pressure of the air exiting the indoor unit of the heat pump.
+simple
+real
+2
++
+0.0
++Inf
+[ ; ]
+0
+0
+atm
+Pressure
+Total cooling rate
+SN
+1
+The rate at which energy (both sensible and latent)  is removed from the conditioned air stream in cooling mode.
+simple
+real
+2
++
+-Inf
++Inf
+[ ; ]
+0
+0
+kJ/hr
+Power
+Sensible cooling rate
+SN
+1
+The rate at which sensible heat is removed from the conditioned air stream in cooling mode.
+simple
+real
+2
++
+-Inf
++Inf
+[ ; ]
+0
+0
+kJ/hr
+Power
+Latent cooling rate
+SN
+1
+The rate at which latent energy is removed from the conditoned air stream in cooling mode.
+simple
+real
+2
++
+-Inf
++Inf
+[ ; ]
+0
+0
+kJ/hr
+Power
+Heat rejection rate
+SN
+1
+The rate at which heat is rejected to the ambient from the outdoor unit during cooling operation.
+simple
+real
+2
++
+-Inf
++Inf
+[ ; ]
+0
+0
+kJ/hr
+Power
+Total power consumption
+SN
+1
+The total power input (compressor + indoor fan + outdoor fan ) required to operate the heat pump.
+simple
+real
+2
++
+-Inf
++Inf
+[ ; ]
+0
+0
+kJ/hr
+Power
+COP
+SN
+1
+The coefficient of performance of the heat pump.
+simple
+real
+2
++
+0.0
++Inf
+[ ; ]
+0
+0
+-
+Dimensionless
+EER
+SN
+1
+The Energy Efficiency Rating of the heat pump during the timestep.
+simple
+real
+2
++
+0.0
++Inf
+[ ; ]
+0
+0
+-
+Dimensionless
+Indoor fan power
+SN
+1
+The rate at which the heat pump indoor fan is consuming energy.
+simple
+real
+2
++
+-Inf
++Inf
+[ ; ]
+0
+0
+kJ/hr
+Power
+Outdoor fan power
+SN
+1
+The rate at which the heat pump outdoor fan is consuming energy.
+simple
+real
+2
++
+-Inf
++Inf
+[ ; ]
+0
+0
+kJ/hr
+Power
+Compressor power
+SN
+1
+The rate at which the heat pump compressor is consuming energy.
+simple
+real
+2
++
+-Inf
++Inf
+[ ; ]
+0
+0
+kJ/hr
+Power
+Condensate temperature
+SN
+1
+The temperature of the condensate exiting the indoor unit of the heat pump in cooling mode.
+simple
+real
+2
++
+-Inf
++Inf
+[ ; ]
+0
+0
+C
+Temperature
+Condensate flow rate
+SN
+1
+The flow rate of the condensate exiting the indoor unit of the heat pump in cooling mode.
+simple
+real
+2
++
+0.0
++Inf
+[ ; ]
+0
+0
+kg/hr
+Flow Rate
+Compressor frequency
+SN
+1
+The frequency of the compressor.
+simple
+real
+2
++
+0.0
++Inf
+[ ; ]
+0
+0
+1/S
+Frequency
+Number of frequencies
+SN
+1
+The number of normalized frequencies for which data is provided in the cooling performance data file.
+simple
+real
+3
++
+2
++Inf
+[ ; ]
+4
+0
+-
+Dimensionless
+Rated cooling capacity
+SN
+1
+The total cooling capacity of the heat pump at its rated conditions. Make sure the data file corresponds to the same rating conditions.
+simple
+real
+3
++
+0.0
++Inf
+[ ; ]
+0
+0
+kJ/hr
+Power
+Rated sensible cooling capacity
+SN
+1
+The sensible cooling capacity of the heat pump at its rated conditions. Make sure the data file corresponds to the same rating conditions.
+simple
+real
+3
++
+0.0
++Inf
+[ ; ]
+0
+0
+kJ/hr
+Power
+Rated total cooling power
+SN
+1
+The power of the heat pump at its rated conditions in cooling mode. Make sure the data file corresponds to the same rating conditions.
+simple
+real
+3
++
+0.0
++Inf
+[ ; ]
+0
+0
+kJ/hr
+Power
+Rated inlet air flow rate
+SN
+1
+The rated value of the air flow rate entering the indoor unit of the heat pump. Make sure the data file corresponds to the same rating conditions.
+simple
+real
+3
++
+0.0
++Inf
+[ ; ]
+0
+0
+kg/hr
+Flow Rate
+Rated frequency
+SN
+1
+The frequency of the heat pump compressor at its rated conditions. Make sure the data file corresponds to the same rating conditions.
+simple
+real
+3
++
+0.0
++Inf
+[ ; ]
+0
+0
+1/S
+Frequency
+Indoor air temperature measurment
+SN
+1
+The measured indoor room temperature, to be provided if no external controller is used.
+simple
+real
+1
++
+-Inf
++Inf
+[ ; ]
+0
+0
+C
+Temperature
+Indoor fan power
+SN
+1
+The power input for the indoor unit fan.
+simple
+real
+1
++
+-Inf
++Inf
+[ ; ]
+0
+0
+kJ/hr
+Power
+Outdoor fan power
+SN
+1
+The power input for the outdoor unit fan.
+simple
+real
+1
++
+-Inf
++Inf
+[ ; ]
+0
+0
+kJ/hr
+Power
+0
+0
+0
+0
+0
+
+*** trnModel specific properties ***
+1
+3254
+
+9
+
+
+
+0
+
+
+
+0
+
+
+
+0
+
+
+
+0
+
+
+
+0
+
+
+
+0
+
+
+
+0
+
+
+
+0
+
+
+
+0
+9
+
+Which file contains the heat pump cooling performance data?
+C:\Users\Gregor\Documents\Polytechnique Montréal\Canmet\Performance Results/values.txt
+1
+C:\Users\Gregor\Documents\Polytechnique Montréal\Canmet\Performance Results/values.txt
+LU_cool
+
+0
+
+
+
+0
+
+
+0
+
+
+
+0
+
+
+0
+
+
+
+0
+
+
+0
+
+
+
+0
+
+
+0
+
+
+
+0
+
+
+0
+
+
+
+0
+
+
+0
+
+
+
+0
+
+
+0
+
+
+
+0
+
+
+0
+0
+0
+10
+0
+
+
+1
+100
+0
+17
+0
+
+
+1
+100
+0
+12
+0
+
+
+1
+100
+-1
+-1
+0
+
+
+1
+100
