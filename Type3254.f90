@@ -64,13 +64,6 @@
 ! 16 | Tcond        | Condensate temperature                                        | °C              | °C
 ! 17 | mDotCond     | Condensate flow rate                                          | kg/h            | kg/h
 ! 18 | f            | Compressor frequency                                          | 1/s             | 1/s
-!
-!
-! Revision history
-! ---------------------------------------------------------------------------------------------------------------------
-!
-! Created 2018-06-07 - Gregor Strugala, École Polytechnique de Montréal
-! ---------------------------------------------------------------------------------------------------------------------
 
 subroutine Type3254
 !export this subroutine for its use in external DLLs
@@ -81,17 +74,23 @@ use, intrinsic :: iso_fortran_env, only : wp=>real64    ! Defines a constant "wp
 use TrnsysConstants
 use TrnsysFunctions
 
-implicit None
+implicit none
 
-! Local variables
 real(wp) :: time, timeStep    ! TRNSYS time and timestep
-real(wp) :: Tin, wIn, RHin, mDotIn, pIn, Toa, f, Tset, Tm, Pfani, Pfano    ! Inputs
-real(wp) :: yControl, yHum, LUcool, nDBin, nWBin, nFlowRates, nDBoa nf    ! Parameters
+real(wp) :: Tin, wIn, RHin, mDotIn, pIn, Toa, f, Tset, Tm, PfanI, PfanO    ! Inputs
+integer :: yControl, yHum, LUcool, nDBin, nWBin, nFlowRates, nDBoa, nf    ! Parameters
 real(wp) :: QcRated, QcsRated, PtotRated,mDotInRated, fRated    ! Parameters (rated values)
 real(wp) :: Tout, wOut, RHout, mDotOut, pOut    ! Outputs (outlet conditions)
 real(wp) :: Qc, Qcs, Qcl, Qrej, Ptot, Pcomp    ! Outputs (heat and power)
 real(wp) :: COP, EER, Tcond, mDotCond    ! Outputs (misc)
+real(wp) :: x, y    ! arrays with inputs and outputs of interpolation
+integer :: nx, ny, nval    ! interpolation parameters
+dimension :: x(5), y(3), nval(5)
 integer :: thisUnit, thisType    ! unit and type numbers
+
+! Local variables
+real(wp) :: psyDat(9), TwbIn, hIn, hOut, airProps(5), Cp, TK, pkPa
+integer :: psychMode, status
 
 ! Get the Global Trnsys Simulation Variables
 time = getSimulationTime()
@@ -271,41 +270,111 @@ if(ErrorFound()) return
 	!Sample Code: T_INITIAL_1=getDynamicArrayValueLastTimestep(1)
 	!-----------------------------------------------------------------------------------------------------------------------
 
-	!-----------------------------------------------------------------------------------------------------------------------
-	!Perform All of the Calculations Here to Set the Outputs from the Model Based on the Inputs
+! Inlet air state
+psyDat(1) = pIn
+psyDat(2) = Tin
+psyDat(4) = RHin/100.0
+psyDat(6) = wIn
+if (yHum == 1) then
+    psychMode = 4
+else
+    psychMode = 2
+endif
+call MoistAirProperties(thisUnit,thisType,1,psychMode,0,psyDat,1,status)
+pIn = psyDat(1)
+Tin = psyDat(2)
+RHin = psyDat(4)    ! RHin between 0 and 1 (not 0 and 100)
+wIn = psyDat(6)
+hIn = psyDat(7)
 
-	!Sample Code: OUT1=IN1+PAR1
+! Find cooling performance from data file
+nx = 5
+nval(5) = nDBin
+nval(4) = nDBoa
+nval(3) = nWBin
+nval(2) = nf
+nval(1) = nFlowRates
+x(1) = mDotIn
+x(2) = f
+x(3) = TwbIn
+x(4) = Toa
+x(5) = Tin
+ny = 3
+call InterpolateData(LUcool,nx,nval,ny,x,y)
+if (ErrorFound()) return
 
-	!If the model requires the solution of numerical derivatives, set these derivatives and get the current solution
-	!Sample Code: T1=getNumericalSolution(1)
-	!Sample Code: T2=getNumericalSolution(2)
-	!Sample Code: DTDT1=3.*T2+7.*T1-15.
-	!Sample Code: DTDT2=-2.*T1+11.*T2+21.
-	!Sample Code: Call SetNumericalDerivative(1,DTDT1)
-	!Sample Code: Call SetNumericalDerivative(2,DTDT2)
+Qc = QcRated * y(1)
+Qcs = QcsRated * y(2)
+Ptot = PtotRated * y(3)
+
+! Outlet air state
+mDotOut = mDotIn    ! Dry air mass conservation
+pOut = pIn    ! Fan pressure drop neglected
+TK = Tin + 273.15
+pkPa = pIn * 101.325
+call AirProp(TK,pkPa,airProps)  ! COMPILATION ERROR (why?)
+Cp = airProps(5) ! Cp calculation for sensible enthalpy balance
+
+! Moist air state
+if (Qc > Qcs) then
+    hOut = hIn - Qc/mDotOut
+    Tout = Tin - Qcs/(mDotOut*Cp)
+    psyDat(1) = pOut
+    psyDat(2) = Tout
+    psyDat(7) = hOut
+    call MoistAirProperties(thisUnit,thisType,1,5,0,psyDat,1,status)    ! dry-bulb and enthalpy as inputs
+    if (ErrorFound()) return
+else
+    Qc = Qcs
+    wOut = wIn
+    hOut = hIn - Qc/mDotOut
+    psyDat(1) = pOut
+    psyDat(6) = wOut
+    psyDat(7) = hOut
+    call MoistAirProperties(thisUnit,thisType,1,7,0,psyDat,1,status)    ! humidity ratio and enthalpy as inputs
+    if (ErrorFound()) return
+endif
+pOut = psyDat(1)
+Tout = psydat(2)
+RHout = psydat(4)
+wOut = psydat(6)
+hOut = psydat(7)
+
+! Re-calculate heat transfer whose value is modified if saturation occurs
+Qc = mDotOut * (hIn - hOut)    ! Total cooling rate
+Qcs = mDotOut * Cp * (Tin - Tout)    ! Sensible cooling rate
+Qcl = Qc - Qcs    ! Latent cooling rate
+Qrej = Qc + Ptot    ! Heat rejection
+Pcomp = Ptot - PfanI - PfanO    ! Compressor power
+COP = Qc/Ptot
+EER = 3.413 * COP
+Tcond = Tout
+mDotCond = mDotOut * (wIn - wOut)    ! Condensate flow rate - water balance
+
+
 
 !-----------------------------------------------------------------------------------------------------------------------
 
 !-----------------------------------------------------------------------------------------------------------------------
 !Set the Outputs from this Model (#,Value)
-		Call SetOutputValue(1, 0) ! Outlet air temperature
-		Call SetOutputValue(2, 0) ! Outlet air humidity ratio
-		Call SetOutputValue(3, 0) ! Outlet air % RH
-		Call SetOutputValue(4, 0) ! Outlet air flow rate
-		Call SetOutputValue(5, 0) ! Outlet air pressure
-		Call SetOutputValue(6, 0) ! Total cooling rate
-		Call SetOutputValue(7, 0) ! Sensible cooling rate
-		Call SetOutputValue(8, 0) ! Latent cooling rate
-		Call SetOutputValue(9, 0) ! Heat rejection rate
-		Call SetOutputValue(10, 0) ! Total power consumption
-		Call SetOutputValue(11, 0) ! COP
-		Call SetOutputValue(12, 0) ! EER
-		Call SetOutputValue(13, 0) ! Indoor fan power
-		Call SetOutputValue(14, 0) ! Outdoor fan power
-		Call SetOutputValue(15, 0) ! Compressor power
-		Call SetOutputValue(16, 0) ! Condensate temperature
-		Call SetOutputValue(17, 0) ! Condensate flow rate
-		Call SetOutputValue(18, 0) ! Compressor frequency
+		Call SetOutputValue(1, Tout) ! Outlet air temperature
+		Call SetOutputValue(2, wOut) ! Outlet air humidity ratio
+		Call SetOutputValue(3, RHout*100.0) ! Outlet air % RH
+		Call SetOutputValue(4, mDotOut) ! Outlet air flow rate
+		Call SetOutputValue(5, pOut) ! Outlet air pressure
+		Call SetOutputValue(6, Qc) ! Total cooling rate
+		Call SetOutputValue(7, Qcs) ! Sensible cooling rate
+		Call SetOutputValue(8, Qcl) ! Latent cooling rate
+		Call SetOutputValue(9, Qrej) ! Heat rejection rate
+		Call SetOutputValue(10, Ptot) ! Total power consumption
+		Call SetOutputValue(11, COP) ! COP
+		Call SetOutputValue(12, EER) ! EER
+		Call SetOutputValue(13, PfanI) ! Indoor fan power
+		Call SetOutputValue(14, PfanO) ! Outdoor fan power
+		Call SetOutputValue(15, Pcomp) ! Compressor power
+		Call SetOutputValue(16, Tcond) ! Condensate temperature
+		Call SetOutputValue(17, mDotCond) ! Condensate flow rate
+		Call SetOutputValue(18, f) ! Compressor frequency
 
       return
 end subroutine Type3254
