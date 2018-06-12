@@ -89,7 +89,7 @@ dimension :: x(5), y(3), nval(5)
 integer :: thisUnit, thisType    ! unit and type numbers
 
 ! Local variables
-real(wp) :: psyDat(9), TwbIn, hIn, hOut, airProps(5), Cp, TK, pkPa
+real(wp) :: psyDat(9), TwbIn, hIn, hOut, Cp, TinK
 integer :: psychMode, status
 
 ! Get the Global Trnsys Simulation Variables
@@ -232,23 +232,23 @@ endif
 !-----------------------------------------------------------------------------------------------------------------------
 
 !Read the Inputs
-    Tin = GetInputValue(1)
-    wIn = GetInputValue(2)
-    RHin = GetInputValue(3)
-    mDotIn = GetInputValue(4)
-    pIn = GetInputValue(5)
-    Toa = GetInputValue(6)
-    f = GetInputValue(7)
-    Tset = GetInputValue(8)
-    Tm = GetInputValue(9)
-    Pfani = GetInputValue(10)
-    Pfano = GetInputValue(11)
+Tin = GetInputValue(1)
+wIn = GetInputValue(2)
+RHin = GetInputValue(3)
+mDotIn = GetInputValue(4)
+pIn = GetInputValue(5)
+Toa = GetInputValue(6)
+f = GetInputValue(7)
+Tset = GetInputValue(8)
+Tm = GetInputValue(9)
+Pfani = GetInputValue(10)
+Pfano = GetInputValue(11)
 
 
-	!Check the Inputs for Problems (#,ErrorType,Text)
-	!Sample Code: If( IN1 <= 0.) Call FoundBadInput(1,'Fatal','The first input provided to this model is not acceptable.')
+!Check the Inputs for Problems (#,ErrorType,Text)
+!Sample Code: If( IN1 <= 0.) Call FoundBadInput(1,'Fatal','The first input provided to this model is not acceptable.')
 
-if(ErrorFound()) return
+if (ErrorFound()) return
 !-----------------------------------------------------------------------------------------------------------------------
 
 !-----------------------------------------------------------------------------------------------------------------------
@@ -310,15 +310,24 @@ Ptot = PtotRated * y(3)
 ! Outlet air state
 mDotOut = mDotIn    ! Dry air mass conservation
 pOut = pIn    ! Fan pressure drop neglected
-TK = Tin + 273.15
-pkPa = pIn * 101.325
-call AirProp(TK,pkPa,airProps)  ! COMPILATION ERROR (why?)
-Cp = airProps(5) ! Cp calculation for sensible enthalpy balance
+
+! Cp calculation for sensible enthalpy balance
+TinK = Tin + 273.15
+if (TinK <= 400.d0) then    ! Code recovered from DryAirProperties.f90 (TESS Models)
+    Cp = 0.81764d0 + 0.0017855d0*TinK - 0.0000056517d0*TinK**2 + 6.0054d-09*TinK**3
+else
+	Cp = 1.0027d0 - 0.00017196d0*TinK + 5.8549d-07*TinK**2 - 2.7594d-10*TinK**3
+endif
 
 ! Moist air state
 if (Qc > Qcs) then
-    hOut = hIn - Qc/mDotOut
-    Tout = Tin - Qcs/(mDotOut*Cp)
+    if (mDotOut /= 0.) then
+        hOut = hIn - Qc/mDotOut
+        Tout = Tin - Qcs/(mDotOut*Cp)
+    else
+        hOut = hIn
+        Tout = Tin
+    endif
     psyDat(1) = pOut
     psyDat(2) = Tout
     psyDat(7) = hOut
@@ -327,7 +336,11 @@ if (Qc > Qcs) then
 else
     Qc = Qcs
     wOut = wIn
-    hOut = hIn - Qc/mDotOut
+    if (mDotOut /= 0.) then
+        hOut = hIn - Qc/mDotOut
+    else
+        hOut = hIn
+    endif
     psyDat(1) = pOut
     psyDat(6) = wOut
     psyDat(7) = hOut
@@ -346,7 +359,11 @@ Qcs = mDotOut * Cp * (Tin - Tout)    ! Sensible cooling rate
 Qcl = Qc - Qcs    ! Latent cooling rate
 Qrej = Qc + Ptot    ! Heat rejection
 Pcomp = Ptot - PfanI - PfanO    ! Compressor power
-COP = Qc/Ptot
+if (Ptot /= 0.) then
+    COP = Qc/Ptot
+else
+    COP = 0.0
+endif
 EER = 3.413 * COP
 Tcond = Tout
 mDotCond = mDotOut * (wIn - wOut)    ! Condensate flow rate - water balance
