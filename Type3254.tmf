@@ -55,7 +55,7 @@ real
 -Inf
 +Inf
 [ ; ]
-0
+20.0
 0
 C
 Temperature
@@ -70,7 +70,7 @@ real
 0.0
 +Inf
 [ ; ]
-0
+0.005
 0
 -
 Dimensionless
@@ -115,7 +115,7 @@ real
 0.0
 +Inf
 [ ; ]
-0
+1.0
 0
 atm
 Pressure
