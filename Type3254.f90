@@ -136,14 +136,47 @@ if(getIsFirstCallofSimulation()) then
   	call SetIterationMode(1)    !An indicator for the iteration mode (default=1).  Refer to section 8.4.3.5 of the documentation for more details.
   	call SetNumberStoredVariables(0,0)    !The number of static variables that the model wants stored in the global storage array and the number of dynamic variables that the model wants stored in the global storage array
   	call SetNumberofDiscreteControls(0)   !The number of discrete control functions set by this model (a value greater than zero requires the user to use Solver 1: Powell's method)
+    
+    ! Set units (optional)
+    call SetInputUnits(1,'TE1')    ! °C
+    call SetInputUnits(2,'DM1')    ! -
+    call SetInputUnits(3,'PC1')    ! %
+    call SetInputUnits(4,'MF1')    ! kg/h
+    call SetInputUnits(5,'PR4')    ! atm
+    call SetInputUnits(6,'TE1')    ! °C
+    ! call SetInputUnits(7,)    No frequency units ?
+    call SetInputUnits(8,'TE1')    ! °C
+    call SetInputUnits(9,'TE1')    ! °C
+    call SetInputUnits(10,'PW1')    ! kJ/h
+    call SetInputUnits(11,'PW1')    ! kJ/h
+    
+    call SetOutputUnits(1,'TE1')    ! °C
+    call SetOutputUnits(2,'DM1')    ! -
+    call SetOutputUnits(3,'PC1')    ! %
+    call SetOutputUnits(4,'MF1')    ! kg/h
+    call SetOutputUnits(5,'PR4')    ! atm
+    call SetOutputUnits(6,'PW1')    ! kJ/h
+    call SetOutputUnits(7,'PW1')    ! kJ/h
+    call SetOutputUnits(8,'PW1')    ! kJ/h
+    call SetOutputUnits(9,'PW1')    ! kJ/h
+    call SetOutputUnits(10,'PW1')    ! kJ/h
+    call SetOutputUnits(11,'DM1')    ! -
+    call SetOutputUnits(12,'DM1')    ! -
+    call SetOutputUnits(13,'PW1')    ! kJ/h
+    call SetOutputUnits(14,'PW1')    ! kJ/h
+    call SetOutputUnits(15,'PW1')    ! kJ/h
+    call SetOutputUnits(16,'TE1')    ! °C
+    call SetOutputUnits(17,'MF1')    ! kg/h
+    ! call SetInputUnits(18,)    No frequency units ?
 
   	return
 
 endif
 
-! --- Do All of the First Timestep Manipulations Here - There Are No Iterations at the Intial Time ---------------------
+! --- Start time call: not a real time step, there are no iterations at the initial time - output initial conditions ---
 
 if (getIsStartTime()) then
+    
     yControl = getParameterValue(1)
     yHum = getParameterValue(2)
     LUcool = getParameterValue(3)
@@ -175,25 +208,25 @@ if (getIsStartTime()) then
    !Check the Parameters for Problems (#,ErrorType,Text)
    !Sample Code: If( PAR1 <= 0.) Call FoundBadParameter(1,'Fatal','The first parameter provided to this model is not acceptable.')
 
-   !Set the Initial Values of the Outputs (#,Value)
-		call SetOutputValue(1, 0) ! Outlet air temperature
-		call SetOutputValue(2, 0) ! Outlet air humidity ratio
-		call SetOutputValue(3, 0) ! Outlet air % RH
-		call SetOutputValue(4, 0) ! Outlet air flow rate
-		call SetOutputValue(5, 0) ! Outlet air pressure
-		call SetOutputValue(6, 0) ! Total cooling rate
-		call SetOutputValue(7, 0) ! Sensible cooling rate
-		call SetOutputValue(8, 0) ! Latent cooling rate
-		call SetOutputValue(9, 0) ! Heat rejection rate
-		call SetOutputValue(10, 0) ! Total power consumption
-		call SetOutputValue(11, 0) ! COP
-		call SetOutputValue(12, 0) ! EER
-		call SetOutputValue(13, 0) ! Indoor fan power
-		call SetOutputValue(14, 0) ! Outdoor fan power
-		call SetOutputValue(15, 0) ! Compressor power
-		call SetOutputValue(16, 0) ! Condensate temperature
-		call SetOutputValue(17, 0) ! Condensate flow rate
-		call SetOutputValue(18, 0) ! Compressor frequency
+    ! Set outputs to zeros at initial time
+	call SetOutputValue(1, 0.0_wp) ! Outlet air temperature
+	call SetOutputValue(2, 0.0_wp) ! Outlet air humidity ratio
+	call SetOutputValue(3, 0.0_wp) ! Outlet air % RH
+	call SetOutputValue(4, 0.0_wp) ! Outlet air flow rate
+	call SetOutputValue(5, 0.0_wp) ! Outlet air pressure
+	call SetOutputValue(6, 0.0_wp) ! Total cooling rate
+	call SetOutputValue(7, 0.0_wp) ! Sensible cooling rate
+	call SetOutputValue(8, 0.0_wp) ! Latent cooling rate
+	call SetOutputValue(9, 0.0_wp) ! Heat rejection rate
+	call SetOutputValue(10, 0.0_wp) ! Total power consumption
+	call SetOutputValue(11, 0.0_wp) ! COP
+	call SetOutputValue(12, 0.0_wp) ! EER
+	call SetOutputValue(13, 0.0_wp) ! Indoor fan power
+	call SetOutputValue(14, 0.0_wp) ! Outdoor fan power
+	call SetOutputValue(15, 0.0_wp) ! Compressor power
+	call SetOutputValue(16, 0.0_wp) ! Condensate temperature
+	call SetOutputValue(17, 0.0_wp) ! Condensate flow rate
+	call SetOutputValue(18, 0.0_wp) ! Compressor frequency
 
 
    !If Needed, Set the Initial Values of the Static Storage Variables (#,Value)
@@ -205,14 +238,14 @@ if (getIsStartTime()) then
    !If Needed, Set the Initial Values of the Discrete Controllers (#,Value)
    !Sample Code for Controller 1 Set to Off: Call SetDesiredDiscreteControlState(1,0)
 
-		return
+    return
 
 endif
-!-----------------------------------------------------------------------------------------------------------------------
 
-!-----------------------------------------------------------------------------------------------------------------------
-!ReRead the Parameters if Another Unit of This Type Has Been Called Last
+! --- TRNSYS has detected that parameters must be re-read - indicates another unit of this Type ------------------------
+
 if(getIsReReadParameters()) then
+    
     yControl = getParameterValue(1)
     yHum = getParameterValue(2)
     LUcool = getParameterValue(3)
@@ -229,9 +262,9 @@ if(getIsReReadParameters()) then
 
 
 endif
-!-----------------------------------------------------------------------------------------------------------------------
 
-!Read the Inputs
+! --- Read inputs (for all calls except very first call in simulation) -------------------------------------------------
+
 Tin = GetInputValue(1)
 wIn = GetInputValue(2)
 RHin = GetInputValue(3)
@@ -273,7 +306,7 @@ if (ErrorFound()) return
 ! Inlet air state
 psyDat(1) = pIn
 psyDat(2) = Tin
-psyDat(4) = RHin/100.0
+psyDat(4) = RHin/100.0_wp
 psyDat(6) = wIn
 if (yHum == 1) then
     psychMode = 4
@@ -313,14 +346,19 @@ pOut = pIn    ! Fan pressure drop neglected
 
 ! Cp calculation for sensible enthalpy balance
 TinK = Tin + 273.15
-if (TinK <= 400.d0) then    ! Code recovered from DryAirProperties.f90 (TESS Models)
-    Cp = 0.81764d0 + 0.0017855d0*TinK - 0.0000056517d0*TinK**2 + 6.0054d-09*TinK**3
+if (TinK <= 400.0_wp) then    ! Code recovered from DryAirProperties.f90 (TESS Models)
+    
+    Cp = 0.81764_wp + 0.0017855_wp*TinK - 0.0000056517_wp*TinK**2 + 6.0054d-09*TinK**3
+    
 else
-	Cp = 1.0027d0 - 0.00017196d0*TinK + 5.8549d-07*TinK**2 - 2.7594d-10*TinK**3
+    
+	Cp = 1.0027d0 - 0.00017196_wp*TinK + 5.8549d-07*TinK**2 - 2.7594d-10*TinK**3
+    
 endif
 
 ! Moist air state
 if (Qc > Qcs) then
+    
     if (mDotOut /= 0.) then
         hOut = hIn - Qc/mDotOut
         Tout = Tin - Qcs/(mDotOut*Cp)
@@ -333,7 +371,9 @@ if (Qc > Qcs) then
     psyDat(7) = hOut
     call MoistAirProperties(thisUnit,thisType,1,5,0,psyDat,1,status)    ! dry-bulb and enthalpy as inputs
     if (ErrorFound()) return
+    
 else
+    
     Qc = Qcs
     wOut = wIn
     if (mDotOut /= 0.) then
@@ -346,6 +386,7 @@ else
     psyDat(7) = hOut
     call MoistAirProperties(thisUnit,thisType,1,7,0,psyDat,1,status)    ! humidity ratio and enthalpy as inputs
     if (ErrorFound()) return
+    
 endif
 pOut = psyDat(1)
 Tout = psydat(2)
@@ -362,36 +403,33 @@ Pcomp = Ptot - PfanI - PfanO    ! Compressor power
 if (Ptot /= 0.) then
     COP = Qc/Ptot
 else
-    COP = 0.0
+    COP = 0.0_wp
 endif
-EER = 3.413 * COP
+EER = 3.413_wp * COP
 Tcond = Tout
 mDotCond = mDotOut * (wIn - wOut)    ! Condensate flow rate - water balance
 
 
-
-!-----------------------------------------------------------------------------------------------------------------------
-
-!-----------------------------------------------------------------------------------------------------------------------
 !Set the Outputs from this Model (#,Value)
-		Call SetOutputValue(1, Tout) ! Outlet air temperature
-		Call SetOutputValue(2, wOut) ! Outlet air humidity ratio
-		Call SetOutputValue(3, RHout*100.0) ! Outlet air % RH
-		Call SetOutputValue(4, mDotOut) ! Outlet air flow rate
-		Call SetOutputValue(5, pOut) ! Outlet air pressure
-		Call SetOutputValue(6, Qc) ! Total cooling rate
-		Call SetOutputValue(7, Qcs) ! Sensible cooling rate
-		Call SetOutputValue(8, Qcl) ! Latent cooling rate
-		Call SetOutputValue(9, Qrej) ! Heat rejection rate
-		Call SetOutputValue(10, Ptot) ! Total power consumption
-		Call SetOutputValue(11, COP) ! COP
-		Call SetOutputValue(12, EER) ! EER
-		Call SetOutputValue(13, PfanI) ! Indoor fan power
-		Call SetOutputValue(14, PfanO) ! Outdoor fan power
-		Call SetOutputValue(15, Pcomp) ! Compressor power
-		Call SetOutputValue(16, Tcond) ! Condensate temperature
-		Call SetOutputValue(17, mDotCond) ! Condensate flow rate
-		Call SetOutputValue(18, f) ! Compressor frequency
+Call SetOutputValue(1, Tout) ! Outlet air temperature
+Call SetOutputValue(2, wOut) ! Outlet air humidity ratio
+Call SetOutputValue(3, RHout*100.0_wp) ! Outlet air % RH
+Call SetOutputValue(4, mDotOut) ! Outlet air flow rate
+Call SetOutputValue(5, pOut) ! Outlet air pressure
+Call SetOutputValue(6, Qc) ! Total cooling rate
+Call SetOutputValue(7, Qcs) ! Sensible cooling rate
+Call SetOutputValue(8, Qcl) ! Latent cooling rate
+Call SetOutputValue(9, Qrej) ! Heat rejection rate
+Call SetOutputValue(10, Ptot) ! Total power consumption
+Call SetOutputValue(11, COP) ! COP
+Call SetOutputValue(12, EER) ! EER
+Call SetOutputValue(13, PfanI) ! Indoor fan power
+Call SetOutputValue(14, PfanO) ! Outdoor fan power
+Call SetOutputValue(15, Pcomp) ! Compressor power
+Call SetOutputValue(16, Tcond) ! Condensate temperature
+Call SetOutputValue(17, mDotCond) ! Condensate flow rate
+Call SetOutputValue(18, f) ! Compressor frequency
 
-      return
+return
+
 end subroutine Type3254
