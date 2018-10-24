@@ -1,7 +1,7 @@
 !TRNSYS Type3254: Variable capacity air-source heat pump with performance files
 ! ---------------------------------------------------------------------------------------------------------------------
 !
-! This routine implements an air-source heat pump with variable compressor speed.
+! This routine implements an air-source heat pump with variable speed compressor.
 !
 !
 ! Inputs
@@ -136,7 +136,7 @@ if(getIsFirstCallofSimulation()) then
   	call SetIterationMode(1)    !An indicator for the iteration mode (default=1).  Refer to section 8.4.3.5 of the documentation for more details.
   	call SetNumberStoredVariables(0,0)    !The number of static variables that the model wants stored in the global storage array and the number of dynamic variables that the model wants stored in the global storage array
   	call SetNumberofDiscreteControls(0)   !The number of discrete control functions set by this model (a value greater than zero requires the user to use Solver 1: Powell's method)
-    
+
     ! Set units (optional)
     call SetInputUnits(1,'TE1')    ! °C
     call SetInputUnits(2,'DM1')    ! -
@@ -149,7 +149,7 @@ if(getIsFirstCallofSimulation()) then
     call SetInputUnits(9,'TE1')    ! °C
     call SetInputUnits(10,'PW1')    ! kJ/h
     call SetInputUnits(11,'PW1')    ! kJ/h
-    
+
     call SetOutputUnits(1,'TE1')    ! °C
     call SetOutputUnits(2,'DM1')    ! -
     call SetOutputUnits(3,'PC1')    ! %
@@ -176,7 +176,7 @@ endif
 ! --- Start time call: not a real time step, there are no iterations at the initial time - output initial conditions ---
 
 if (getIsStartTime()) then
-    
+
     yControl = getParameterValue(1)
     yHum = getParameterValue(2)
     LUcool = getParameterValue(3)
@@ -245,7 +245,7 @@ endif
 ! --- TRNSYS has detected that parameters must be re-read - indicates another unit of this Type ------------------------
 
 if(getIsReReadParameters()) then
-    
+
     yControl = getParameterValue(1)
     yHum = getParameterValue(2)
     LUcool = getParameterValue(3)
@@ -313,7 +313,7 @@ if (yHum == 1) then
 else
     psychMode = 2
 endif
-call MoistAirProperties(thisUnit,thisType,1,psychMode,0,psyDat,1,status)
+call MoistAirProperties(thisUnit, thisType, 1, psychMode, 0, psyDat, 1, status) ! unit, type, si units used, psych inputs, Twb not computed, inputs, warnings mgmt, warning occurrences 
 pIn = psyDat(1)
 Tin = psyDat(2)
 RHin = psyDat(4)    ! RHin between 0 and 1 (not 0 and 100)
@@ -344,50 +344,33 @@ Ptot = PtotRated * y(3)
 mDotOut = mDotIn    ! Dry air mass conservation
 pOut = pIn    ! Fan pressure drop neglected
 
-! Cp calculation for sensible enthalpy balance
-TinK = Tin + 273.15
-if (TinK <= 400.0_wp) then    ! Code recovered from DryAirProperties.f90 (TESS Models)
-    
-    Cp = 0.81764_wp + 0.0017855_wp*TinK - 0.0000056517_wp*TinK**2 + 6.0054d-09*TinK**3
-    
-else
-    
-	Cp = 1.0027d0 - 0.00017196_wp*TinK + 5.8549d-07*TinK**2 - 2.7594d-10*TinK**3
-    
+! Moist air state
+if (Qc < Qcs) then
+    Qc = Qcs
+    ! Add warning
 endif
 
-! Moist air state
-if (Qc > Qcs) then
-    
-    if (mDotOut /= 0.) then
-        hOut = hIn - Qc/mDotOut
-        Tout = Tin - Qcs/(mDotOut*Cp)
-    else
-        hOut = hIn
-        Tout = Tin
+if (mDotOut /= 0) then
+    hOut = hIn - Qc/mDotOut
+    wOut = wIn    ! useful when the following if clause is not true
+    if (Qc > Qcs) then    ! nonzero latent heat
+        psyDat(1) = pIn
+        psyDat(2) = Tin
+        psyDat(7) = hIn - Qcs/mDotIn    ! enthalpy of the state (Tin, wOut)
+        call MoistAirProperties(thisUnit, thisType, 1, 5, 0, psyDat, 1, status)    ! dry-bulb and enthalpy as inputs
+        if (ErrorFound()) return
+        wOut = psyDat(6)
     endif
-    psyDat(1) = pOut
-    psyDat(2) = Tout
-    psyDat(7) = hOut
-    call MoistAirProperties(thisUnit,thisType,1,5,0,psyDat,1,status)    ! dry-bulb and enthalpy as inputs
-    if (ErrorFound()) return
-    
 else
-    
-    Qc = Qcs
+    hOut = hIn
     wOut = wIn
-    if (mDotOut /= 0.) then
-        hOut = hIn - Qc/mDotOut
-    else
-        hOut = hIn
-    endif
-    psyDat(1) = pOut
-    psyDat(6) = wOut
-    psyDat(7) = hOut
-    call MoistAirProperties(thisUnit,thisType,1,7,0,psyDat,1,status)    ! humidity ratio and enthalpy as inputs
-    if (ErrorFound()) return
-    
 endif
+
+psyDat(1) = pOut
+psyDat(6) = wOut
+psyDat(7) = hOut
+call MoistAirProperties(thisUnit, thisType, 1, 7, 0, psyDat, 1, status)    ! humidity ratio and enthalpy as inputs
+if (ErrorFound()) return
 pOut = psyDat(1)
 Tout = psydat(2)
 RHout = psydat(4)
@@ -431,5 +414,11 @@ Call SetOutputValue(17, mDotCond) ! Condensate flow rate
 Call SetOutputValue(18, f) ! Compressor frequency
 
 return
+
+! contains
+! subroutine ...
+! ...
+! end
+! types 155, 28
 
 end subroutine Type3254
