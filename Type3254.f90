@@ -89,7 +89,7 @@ dimension :: x(5), y(3), nval(5)
 integer :: thisUnit, thisType    ! unit and type numbers
 
 ! Local variables
-real(wp) :: psyDat(9), TwbIn, hIn, hOut, Cp, TinK
+real(wp) :: psyDat(9), TwbIn, hIn, hx, hOut
 integer :: psychMode, status
 
 ! Get the Global Trnsys Simulation Variables
@@ -328,8 +328,8 @@ nval(4) = nDBoa
 nval(3) = nWBin
 nval(2) = nf
 nval(1) = nFlowRates
-x(1) = mDotIn
-x(2) = f
+x(1) = mDotIn/mDotInRated
+x(2) = f/fRated
 x(3) = TwbIn
 x(4) = Toa
 x(5) = Tin
@@ -354,10 +354,12 @@ endif
 if (mDotOut /= 0) then
     hOut = hIn - Qc/mDotOut
     wOut = wIn    ! useful when the following if clause is not true
+    hx = hIn      ! same
     if (Qc > Qcs) then    ! nonzero latent heat
         psyDat(1) = pIn
         psyDat(2) = Tin
-        psyDat(7) = hIn - (Qc - Qcs)/mDotIn    ! enthalpy of the state (Tin, wOut)
+        hx = hIn - (Qc - Qcs)/mDotIn
+        psyDat(7) = hx    ! enthalpy of the state (Tin, wOut)
         call MoistAirProperties(thisUnit, thisType, 1, 5, 0, psyDat, 1, status)    ! dry-bulb and enthalpy as inputs
         if (ErrorFound()) return
         wOut = psyDat(6)
@@ -365,6 +367,7 @@ if (mDotOut /= 0) then
 else
     hOut = hIn
     wOut = wIn
+    hx = hIn
 endif
 
 psyDat(1) = pOut
@@ -380,7 +383,7 @@ hOut = psydat(7)
 
 ! Re-calculate heat transfer whose value is modified if saturation occurs
 Qc = mDotOut * (hIn - hOut)    ! Total cooling rate
-Qcs = mDotOut * Cp * (Tin - Tout)    ! Sensible cooling rate
+Qcs = mDotOut * (hx - hOut)    ! Sensible cooling rate
 Qcl = Qc - Qcs    ! Latent cooling rate
 Qrej = Qc + Ptot    ! Heat rejection
 Pcomp = Ptot - PfanI - PfanO    ! Compressor power
