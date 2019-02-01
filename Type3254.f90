@@ -316,6 +316,7 @@ endif
 call MoistAirProperties(thisUnit, thisType, 1, psychMode, 0, psyDat, 1, status) ! unit, type, si units used, psych inputs, Twb not computed, inputs, warnings mgmt, warning occurrences 
 pIn = psyDat(1)
 Tin = psyDat(2)
+TwbIn = psydat(3)
 RHin = psyDat(4)    ! RHin between 0 and 1 (not 0 and 100)
 wIn = psyDat(6)
 hIn = psyDat(7)
@@ -356,7 +357,7 @@ if (mDotOut /= 0) then
     if (Qc > Qcs) then    ! nonzero latent heat
         psyDat(1) = pIn
         psyDat(2) = Tin
-        psyDat(7) = hIn - Qcs/mDotIn    ! enthalpy of the state (Tin, wOut)
+        psyDat(7) = hIn - (Qc - Qcs)/mDotIn    ! enthalpy of the state (Tin, wOut)
         call MoistAirProperties(thisUnit, thisType, 1, 5, 0, psyDat, 1, status)    ! dry-bulb and enthalpy as inputs
         if (ErrorFound()) return
         wOut = psyDat(6)
