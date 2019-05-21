@@ -228,16 +228,6 @@ if (getIsStartTime()) then
 	call SetOutputValue(17, 0.0_wp) ! Condensate flow rate
 	call SetOutputValue(18, 0.0_wp) ! Compressor frequency
 
-
-   !If Needed, Set the Initial Values of the Static Storage Variables (#,Value)
-   !Sample Code: SetStaticArrayValue(1,0.d0)
-
-   !If Needed, Set the Initial Values of the Dynamic Storage Variables (#,Value)
-   !Sample Code: Call SetDynamicArrayValueThisIteration(1,20.d0)
-
-   !If Needed, Set the Initial Values of the Discrete Controllers (#,Value)
-   !Sample Code for Controller 1 Set to Off: Call SetDesiredDiscreteControlState(1,0)
-
     return
 
 endif
