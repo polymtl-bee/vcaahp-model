@@ -25,7 +25,8 @@
 ! ---|--------------|---------------------------------------------------------------|-----------------|----------------
 !  1 | f            | Normalized frequency                                          | -               | -
 !  2 | status       | Controller status                                             | -               | -
-
+! 
+! Author: Gregor Strugala
 
 subroutine Type3223
 !export this subroutine for its use in external DLLs
