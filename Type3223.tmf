@@ -43,7 +43,7 @@ __
 __
 __
 __
-11
+12
 Setpoint
 SN
 1
@@ -59,7 +59,7 @@ real
 0
 C
 Temperature
-Controlled temperature
+Command signal
 SN
 1
 Temperature to be controlled (typically the indoor temperature).
@@ -216,6 +216,21 @@ real
 0
 -
 Dimensionless
+Level number
+SN
+1
+The number of values N that the command signal can take between its minimum and maximum values (inputs 4 and 5, respectively). The command signal levels are evenly spaced, i.e. the i-th value is equal to i * (max - min) / N.
+simple
+integer
+1
++
+1
++Inf
+[ ; ]
+10
+0
+-
+Dimensionless
 0
 0
 0
@@ -329,7 +344,7 @@ Dimensionless
 0
 0
 0
-8
+9
 0
 
 
