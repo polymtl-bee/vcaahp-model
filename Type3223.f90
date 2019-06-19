@@ -64,85 +64,7 @@ if (GetIsVersionSigningTime()) then
 
 endif
 
-! ---- Last call in the simulation (after last timestep has converged) -------------------------------------------------
-
-if (GetIsLastCallofSimulation()) then
-
-    ! This Type should not perform any task during the last call
-    return  ! We are done for this call
-
-endif
-
-! --- End of timestep call (after convergence or too many iterations) --------------------------------------------------
-
-if (GetIsEndOfTimestep()) then
-
-    return  ! We are done for this call
-
-endif
-
-! --- Very first call of simulation (initialization call) --------------------------------------------------------------
-if(getIsFirstCallofSimulation()) then
-
-	!Tell the TRNSYS Engine How This Type Works
-	call SetNumberofParameters(0)
-	call SetNumberofInputs(9)
-	call SetNumberofDerivatives(0)
-	call SetNumberofOutputs(9)
-	call SetIterationMode(1)  ! An indicator for the iteration mode (default=1).  Refer to section 8.4.3.5 of the documentation for more details.
-	call SetNumberStoredVariables(0,0)  ! The number of static variables that the model wants stored in the global storage array and the number of dynamic variables that the model wants stored in the global storage array
-	call SetNumberofDiscreteControls(0)  ! The number of discrete control functions set by this model (a value greater than zero requires the user to use Solver 1: Powell's method)
-
-    h = getSimulationTimeStep()
-    status = 2
-
-	return
-
-endIf
-
-! --- Start time call: not a real time step, there are no iterations at the initial time - output initial conditions ---
-
-if (getIsStartTime()) then
-
-
-    Tset = GetInputValue(1)
-    Tr = GetInputValue(2)
-    onOff = GetInputValue(3)
-    fmin = GetInputValue(4)
-    fmax = GetInputValue(5)
-    Kc = GetInputValue(6)
-    ti = GetInputValue(7)
-    tt = GetInputValue(8)
-    b = GetInputValue(9)
-
-!Check the Parameters for Problems (#,ErrorType,Text)
-!Sample Code: If( PAR1 <= 0.) Call FoundBadParameter(1,'Fatal','The first parameter provided to this model is not acceptable.')
-
-!Set the Initial Values of the Outputs (#,Value)
-	call SetOutputValue(1, 0.0_wp) ! Normalized frequency
-	call SetOutputValue(2, 0.0_wp) ! Controller status
-    call SetOutputValue(3, status)
-    call SetOutputValue(4, Tset)
-    call SetOutputValue(5, Tr)
-
-
-!If Needed, Set the Initial Values of the Static Storage Variables (#,Value)
-!Sample Code: SetStaticArrayValue(1,0.d0)
-
-!If Needed, Set the Initial Values of the Dynamic Storage Variables (#,Value)
-!Sample Code: Call SetDynamicArrayValueThisIteration(1,20.d0)
-
-!If Needed, Set the Initial Values of the Discrete Controllers (#,Value)
-!Sample Code for Controller 1 Set to Off: Call SetDesiredDiscreteControlState(1,0)
-
-	return
-
-endIf
-
-! --- TRNSYS has detected that parameters must be re-read - indicates another unit of this Type ------------------------
-if(getIsReReadParameters()) then
-
-endif
+call ExecuteSpecialCases()
 
 ! --- Read inputs (for all calls except very first call in simulation) -------------------------------------------------
 
@@ -169,7 +91,7 @@ if (b < 0.0_wp) then
    b = 1.0_wp
 endif
 
-! --- Recall stored values (...1 means at the end of previous time step) ---
+! Recall stored values (...1 means at the end of previous time step)
 status = getOutputValue(3)
 Tset1 = getOutputValue(4)
 Tr1 = getOutputValue(5)
@@ -182,7 +104,7 @@ e1 = Tset1 - Tr1
 if (onOff <= 0) then
     status = 0
     f = 0
-elseif (abs(Tset - Tset1) > 5) then  ! Setpoint-change mode if setpoint step > 5�C
+elseif (abs(Tset - Tset1) > 5) then  ! Setpoint-change mode if setpoint step > 5°C
     status = 8
     f = fmax
 elseif (status == 8) then
@@ -224,34 +146,97 @@ elseif (status == 2) then  ! Normal mode: PI controller with anti-windup.
     endif
 endif
 
-!Check the Inputs for Problems (#,ErrorType,Text)
-!Sample Code: If( IN1 <= 0.) Call FoundBadInput(1,'Fatal','The first input provided to this model is not acceptable.')
-
-
-
-!Set the Outputs from this Model (#,Value)
-call SetOutputValue(1, f) ! Normalized frequency
-call SetOutputValue(2, status) ! Controller status
-call SetOutputValue(3, status)
-call SetOutputValue(4, Tset1)
-call SetOutputValue(5, Tr1)
-call SetOutputValue(6, fmean)
-call SetOutputValue(7, N)
-call SetOutputValue(8, vi1)
-call SetOutputValue(9, es1)
-
-!-----------------------------------------------------------------------------------------------------------------------
-
-!-----------------------------------------------------------------------------------------------------------------------
-!If Needed, Store the Desired Disceret Control Signal Values for this Iteration (#,State)
-!Sample Code:  Call SetDesiredDiscreteControlState(1,1)
-!-----------------------------------------------------------------------------------------------------------------------
-
-!-----------------------------------------------------------------------------------------------------------------------
-!If Needed, Store the Final value of the Dynamic Variables in the Global Storage Array (#,Value)
-!Sample Code:  Call SetDynamicArrayValueThisIteration(1,T_FINAL_1)
-!-----------------------------------------------------------------------------------------------------------------------
+call StoreVariables()
 
 return
-end
-!-----------------------------------------------------------------------------------------------------------------------
+
+    contains
+    
+    subroutine StoreVariables
+    
+    call SetOutputValue(3, status)
+    call SetOutputValue(4, Tset1)
+    call SetOutputValue(5, Tr1)
+    call SetOutputValue(6, fmean)
+    call SetOutputValue(7, N)
+    call SetOutputValue(8, vi1)
+    call SetOutputValue(9, es1)
+    
+    end subroutine StoreVariables
+
+    subroutine ExecuteSpecialCases
+    
+    ! Last call in the simulation (after last timestep has converged)
+    if (GetIsLastCallofSimulation()) then
+        ! This Type should not perform any task during the last call
+        return  ! We are done for this call
+    endif
+
+    ! End of timestep call (after convergence or too many iterations)
+    if (GetIsEndOfTimestep()) then
+        return  ! We are done for this call
+    endif
+
+    ! Very first call of simulation (initialization call)
+    if(getIsFirstCallofSimulation()) then
+
+	    !Tell the TRNSYS Engine How This Type Works
+	    call SetNumberofParameters(0)
+	    call SetNumberofInputs(10)
+	    call SetNumberofDerivatives(0)
+	    call SetNumberofOutputs(9)
+	    call SetIterationMode(1)  ! An indicator for the iteration mode (default=1).  Refer to section 8.4.3.5 of the documentation for more details.
+	    call SetNumberStoredVariables(0,0)  ! The number of static variables that the model wants stored in the global storage array and the number of dynamic variables that the model wants stored in the global storage array
+	    call SetNumberofDiscreteControls(0)  ! The number of discrete control functions set by this model (a value greater than zero requires the user to use Solver 1: Powell's method)
+
+        h = getSimulationTimeStep()
+        status = 2
+
+	    return
+
+    endif
+
+    ! Start time call: not a real time step, there are no iterations at the initial time - output initial conditions
+    if (GetIsStartTime()) then
+
+        Tset = GetInputValue(1)
+        Tr = GetInputValue(2)
+        onOff = GetInputValue(3)
+        fmin = GetInputValue(4)
+        fmax = GetInputValue(5)
+        Kc = GetInputValue(6)
+        ti = GetInputValue(7)
+        tt = GetInputValue(8)
+        b = GetInputValue(9)
+        N = GetInputValue(10)
+
+        !Check the Parameters for Problems (#,ErrorType,Text)
+        !Sample Code: If( PAR1 <= 0.) Call FoundBadParameter(1,'Fatal','The first parameter provided to this model is not acceptable.')
+
+        !Set the Initial Values of the Outputs (#,Value)
+	    call SetOutputValue(1, 0.0_wp) ! Normalized frequency
+	    call SetOutputValue(2, 0.0_wp) ! Controller status
+        call SetOutputValue(3, status)
+        call SetOutputValue(4, Tset)
+        call SetOutputValue(5, Tr)
+
+	    return
+
+    endif
+
+    ! TRNSYS has detected that parameters must be re-read - indicates another unit of this Type
+    if(GetIsReReadParameters()) then
+
+    endif
+    
+    end subroutine ExecuteSpecialCases
+    
+    subroutine SetOutputValues
+    
+    !Set the Outputs from this Model (#,Value)
+    call SetOutputValue(1, f) ! Normalized frequency
+    call SetOutputValue(2, status) ! Controller status
+    
+    end subroutine SetOutputValues
+    
+end subroutine Type3223
