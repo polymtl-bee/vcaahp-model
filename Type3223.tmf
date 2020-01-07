@@ -43,7 +43,7 @@ __
 __
 __
 __
-12
+11
 Setpoint
 SN
 1
@@ -197,25 +197,6 @@ real
 0
 -
 Dimensionless
-Controller status
-SN
-5
-The mode in which the controller is operating.
-0 means that the controller is OFF.
-2 means that the controller is in normal mode (PI control with anti-windup).
-4 means that the controller is in steady-state mode (constant control signal).
-8 means that the controller is in setpoint-change mode (the control signal is kept to its maximum value to rapidly reach the new setpoint after a big setpoint change).
-simple
-real
-2
-+
-0
-+Inf
-[ ; ]
-0
-0
--
-Dimensionless
 Level number
 SN
 1
@@ -351,7 +332,7 @@ Dimensionless
 1
 100
 0
-1
+0
 0
 
 

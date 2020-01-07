@@ -24,7 +24,6 @@
 ! Nb | Variable     | Description                                                   | Output  Units   | Internal Units
 ! ---|--------------|---------------------------------------------------------------|-----------------|----------------
 !  1 | f            | Normalized frequency                                          | -               | -
-!  2 | status       | Controller status                                             | -               | -
 ! 
 ! Author: Gregor Strugala
 
@@ -41,20 +40,20 @@ implicit none
 
 real(wp) :: time, timeStep  ! TRNSYS time and timestep
 real(wp) :: Tset, Tr ! Temperatures
-real(wp) :: f, fmin, fmax, fmean  ! Frequencies
+real(wp) :: fsat, fmin, fmax  ! Frequencies
 real(wp) :: onOff, Kc, ti, tt, b  ! Controller parameters
-real(wp) :: status  ! Controller status
-real(wp) :: e, es, v, vp, vi  ! Controller signals
-real(wp) :: h, N ! timestep, counter
-real(wp) :: Tset1, Tr1, vi1, es1, e1  ! Values of the previous timestep
+real(wp) :: e, es, f, fp, fi  ! Controller signals
+real(wp) :: h ! timestep
+real(wp) :: Tset_old, Tr_old, fi_old, es_old, e_old  ! Values of the previous timestep
+integer :: Nsvar = 4, Noutputs = 1  ! number of of stored variables and outputs returned by the Type
 
 integer :: thisUnit, thisType    ! unit and type numbers
 
 ! Get the Global Trnsys Simulation Variables
-time = getSimulationTime()
-timestep = getSimulationTimeStep()
-thisUnit = getCurrentUnit()
-thisType = getCurrentType()
+time = GetSimulationTime()
+timestep = GetSimulationTimeStep()
+thisUnit = GetCurrentUnit()
+thisType = GetCurrentType()
 
 !--- Version signing call: set the version number for this Type --------------------------------------------------------
 
@@ -69,16 +68,7 @@ call ExecuteSpecialCases()
 
 ! --- Read inputs (for all calls except very first call in simulation) -------------------------------------------------
 
-Tset = GetInputValue(1)
-Tr = GetInputValue(2)
-onOff = GetInputValue(3)
-fmin = GetInputValue(4)
-fmax = GetInputValue(5)
-Kc = GetInputValue(6)
-ti = GetInputValue(7)
-tt = GetInputValue(8)
-b = GetInputValue(9)
-
+call GetInputValues()
 e = Tset - Tr  ! Error
 
 if(ErrorFound()) return
@@ -92,78 +82,69 @@ if (b < 0.0_wp) then
    b = 1.0_wp
 endif
 
-! Recall stored values (...1 means at the end of previous time step)
-status = getOutputValue(3)
-Tset1 = getOutputValue(4)
-Tr1 = getOutputValue(5)
-fmean = getOutputValue(6)
-N = getOutputValue(7)
-vi1 = getOutputValue(8)
-es1 = getOutputValue(9)
-e1 = Tset1 - Tr1
+! Recall stored values
+call RecallStoredValues()
+e_old = Tset_old - Tr_old
 
 if (onOff <= 0) then
-    status = 0
     f = 0
-elseif (abs(Tset - Tset1) > 5) then  ! Setpoint-change mode if setpoint step > 5°C
-    status = 8
-    f = fmax
-elseif (status == 8) then
-    f = fmax
-    if (abs(e) < 1) then  ! Tr gets close to the setpoint: exit setpoint-change mode.
-        status = 2
-        vi = 0  ! Reset the integral
-    endif
-elseif (status == 2 .and. N*h > 0.2) then  ! After 0.2 h (12 min) in steady-state, keep the frequency constant.
-    status = 4                                     !|--This value should be an input
-    f = fmean
-    N = 0
-elseif (status == 4) then  ! steady-state mode: keep the frequency at its mean value.
-    f = fmean
-    if (abs(e) > 0.5) then  ! Count number of times the error is too high (change this condition, i.e. using variance)
-        N = N + 1
-    endif
-    if (N*h > 0.08) then  ! Too much time with an error too big: switch back to normal mode.
-        status = 2
-        N = 0
-    endif
-elseif (status == 2) then  ! Normal mode: PI controller with anti-windup.
-    vp = Kc * (b*Tset - Tr)  ! Proportional signal
+else
+    fp = Kc * (b*Tset - Tr)  ! Proportional signal
     if (ti > 0.0_wp) then  ! Integral action
-        vi = vi1 + Kc / ti * h * (e + e1) / 2  ! Update the integral (using trapezoidal integration).
-        if (tt > 0.0_wp .and. (v < fmin .or. v > fmax)) then
-            v = vp + vi  ! Unsaturated signal
-            es = v - min(fmax, max(fmin, v))  ! Error with saturated signal
-            vi = vi - h * (es + es1) / 2 / tt  ! De-saturate integral signal
-        endif
+        fi = fi_old + Kc / ti * h * (e + e_old) / 2  ! Update the integral (using trapezoidal integration).
+    else
+        fi = fi_old
     endif
-    f = vp + vi
-    if (abs(Tr - Tr1) < 1) then
-        fmean = (f + N*fmean) / (N+1)  ! Update the frequency mean
-        N = N + 1
-    elseif (abs(Tr - Tr1) > 2) then
-        fmean = 0
-        N = 0
+    f = fp + fi  ! Unsaturated signal
+    if (tt > 0.0_wp .and. (f < fmin .or. f > fmax)) then
+        es = f - min(fmax, max(fmin, f))  ! Error with saturated signal
+        fi = fi - h * (es + es_old) / 2 / tt  ! De-saturate integral signal
+        f = fp + fi  ! Re-calculate the unsaturated signal
     endif
+    fsat = min(fmax, max(fmin, f))  ! Saturated signal
 endif
 
-call StoreVariables()
+call StoreValues()
+call SetOutputValues()
 
 return
 
     contains
     
-    subroutine StoreVariables
+    subroutine StoreValues
     
-    call SetOutputValue(3, status)
-    call SetOutputValue(4, Tset1)
-    call SetOutputValue(5, Tr1)
-    call SetOutputValue(6, fmean)
-    call SetOutputValue(7, N)
-    call SetOutputValue(8, vi1)
-    call SetOutputValue(9, es1)
+    call SetOutputValue(Noutputs+1, Tset)
+    call SetOutputValue(Noutputs+2, Tr)
+    call SetOutputValue(Noutputs+3, fi)
+    call SetOutputValue(Noutputs+4, es)
     
-    end subroutine StoreVariables
+    end subroutine StoreValues
+    
+    
+    subroutine RecallStoredValues
+    
+    Tset_old = GetOutputValue(Noutputs+1)
+    Tr_old = GetOutputValue(Noutputs+2)
+    fi_old = GetOutputValue(Noutputs+3)
+    es_old = GetOutputValue(Noutputs+4)
+    
+    end subroutine RecallStoredValues
+    
+    
+    subroutine GetInputValues
+    
+    Tset = GetInputValue(1)
+    Tr = GetInputValue(2)
+    onOff = GetInputValue(3)
+    fmin = GetInputValue(4)
+    fmax = GetInputValue(5)
+    Kc = GetInputValue(6)
+    ti = GetInputValue(7)
+    tt = GetInputValue(8)
+    b = GetInputValue(9)
+    
+    end subroutine GetInputValues
+    
 
     subroutine ExecuteSpecialCases
     
@@ -179,19 +160,18 @@ return
     endif
 
     ! Very first call of simulation (initialization call)
-    if(getIsFirstCallofSimulation()) then
+    if(GetIsFirstCallofSimulation()) then
 
 	    !Tell the TRNSYS Engine How This Type Works
 	    call SetNumberofParameters(0)
 	    call SetNumberofInputs(10)
 	    call SetNumberofDerivatives(0)
-	    call SetNumberofOutputs(9)
+	    call SetNumberofOutputs(Nsvar + Noutputs)
 	    call SetIterationMode(1)  ! An indicator for the iteration mode (default=1).  Refer to section 8.4.3.5 of the documentation for more details.
 	    call SetNumberStoredVariables(0,0)  ! The number of static variables that the model wants stored in the global storage array and the number of dynamic variables that the model wants stored in the global storage array
 	    call SetNumberofDiscreteControls(0)  ! The number of discrete control functions set by this model (a value greater than zero requires the user to use Solver 1: Powell's method)
 
-        h = getSimulationTimeStep()
-        status = 2
+        h = GetSimulationTimeStep()
 
 	    return
 
@@ -200,26 +180,15 @@ return
     ! Start time call: not a real time step, there are no iterations at the initial time - output initial conditions
     if (GetIsStartTime()) then
 
-        Tset = GetInputValue(1)
-        Tr = GetInputValue(2)
-        onOff = GetInputValue(3)
-        fmin = GetInputValue(4)
-        fmax = GetInputValue(5)
-        Kc = GetInputValue(6)
-        ti = GetInputValue(7)
-        tt = GetInputValue(8)
-        b = GetInputValue(9)
-        N = GetInputValue(10)
+        call GetInputValues()
 
         !Check the Parameters for Problems (#,ErrorType,Text)
         !Sample Code: If( PAR1 <= 0.) Call FoundBadParameter(1,'Fatal','The first parameter provided to this model is not acceptable.')
 
         !Set the Initial Values of the Outputs (#,Value)
 	    call SetOutputValue(1, 0.0_wp) ! Normalized frequency
-	    call SetOutputValue(2, 0.0_wp) ! Controller status
-        call SetOutputValue(3, status)
-        call SetOutputValue(4, Tset)
-        call SetOutputValue(5, Tr)
+        call SetOutputValue(2, Tset)
+        call SetOutputValue(3, Tr)
 
 	    return
 
@@ -232,12 +201,15 @@ return
     
     end subroutine ExecuteSpecialCases
     
+    
     subroutine SetOutputValues
     
     !Set the Outputs from this Model (#,Value)
-    call SetOutputValue(1, f) ! Normalized frequency
-    call SetOutputValue(2, status) ! Controller status
+    call SetOutputValue(1, fsat) ! Normalized saturated frequency
+    
+    return
     
     end subroutine SetOutputValues
+    
     
 end subroutine Type3223
