@@ -40,11 +40,12 @@ implicit none
 
 real(wp) :: time, timeStep  ! TRNSYS time and timestep
 real(wp) :: Tset, Tr ! Temperatures
-real(wp) :: fsat, fmin, fmax  ! Frequencies
+real(wp) :: fsat, fq, fmin, fmax  ! Frequencies
 real(wp) :: onOff, Kc, ti, tt, b  ! Controller parameters
 real(wp) :: e, es, f, fp, fi  ! Controller signals
 real(wp) :: h ! timestep
 real(wp) :: Tset_old, Tr_old, fi_old, es_old, e_old  ! Values of the previous timestep
+integer :: N  ! Number of frequency levels
 integer :: Nsvar = 4, Noutputs = 1  ! number of of stored variables and outputs returned by the Type
 
 integer :: thisUnit, thisType    ! unit and type numbers
@@ -102,6 +103,7 @@ else
         f = fp + fi  ! Re-calculate the unsaturated signal
     endif
     fsat = min(fmax, max(fmin, f))  ! Saturated signal
+    fq = (1.0_wp * floor(N * fsat)) / (1.0_wp * N)
 endif
 
 call StoreValues()
@@ -142,6 +144,7 @@ return
     ti = GetInputValue(7)
     tt = GetInputValue(8)
     b = GetInputValue(9)
+    N = GetInputValue(10)
     
     end subroutine GetInputValues
     
@@ -205,7 +208,7 @@ return
     subroutine SetOutputValues
     
     !Set the Outputs from this Model (#,Value)
-    call SetOutputValue(1, fsat) ! Normalized saturated frequency
+    call SetOutputValue(1, fq) ! Normalized saturated quantized frequency
     
     return
     
