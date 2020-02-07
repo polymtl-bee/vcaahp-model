@@ -50,29 +50,18 @@ integer :: Nsvar = 4, Noutputs = 1  ! number of of stored variables and outputs 
 
 integer :: thisUnit, thisType    ! unit and type numbers
 
-! Get the Global Trnsys Simulation Variables
-time = GetSimulationTime()
-timestep = GetSimulationTimeStep()
-thisUnit = GetCurrentUnit()
-thisType = GetCurrentType()
-
-!--- Version signing call: set the version number for this Type --------------------------------------------------------
-
+! Set the version number for this Type
 if (GetIsVersionSigningTime()) then
-
     call SetTypeVersion(18)
     return  ! We are done for this call
-
 endif
 
+call GetTRNSYSvariables()
 call ExecuteSpecialCases()
-
-! --- Read inputs (for all calls except very first call in simulation) -------------------------------------------------
-
 call GetInputValues()
-e = Tset - Tr  ! Error
+if (ErrorFound()) return
 
-if(ErrorFound()) return
+e = Tset - Tr  ! Error
 
 ! Default values for extra parameters
 if (tt < 0.0_wp) then
@@ -173,7 +162,7 @@ return
 	    call SetIterationMode(1)  ! An indicator for the iteration mode (default=1).  Refer to section 8.4.3.5 of the documentation for more details.
 	    call SetNumberStoredVariables(0,0)  ! The number of static variables that the model wants stored in the global storage array and the number of dynamic variables that the model wants stored in the global storage array
 	    call SetNumberofDiscreteControls(0)  ! The number of discrete control functions set by this model (a value greater than zero requires the user to use Solver 1: Powell's method)
-
+        call SetIterationMode(2)
         h = GetSimulationTimeStep()
 
 	    return
@@ -214,5 +203,11 @@ return
     
     end subroutine SetOutputValues
     
+    subroutine GetTRNSYSvariables
+        time = getSimulationTime()
+        timestep = getSimulationTimeStep()
+        thisUnit = getCurrentUnit()
+        thisType = getCurrentType()
+    end subroutine GetTRNSYSvariables
     
 end subroutine Type3223
