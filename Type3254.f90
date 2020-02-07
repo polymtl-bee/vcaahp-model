@@ -65,6 +65,32 @@
 ! 17 | mDotCond     | Condensate flow rate                                          | kg/h            | kg/h
 ! 18 | f            | Compressor frequency                                          | 1/s             | 1/s
 
+module Type3254Data
+
+use, intrinsic :: iso_fortran_env, only : wp=>real64    ! Defines a constant "wp" (working precision) that can be used in real numbers, e.g. 1.0_wp, and sets it to real64 (double precision)
+use TrnsysConstants
+use TrnsysFunctions
+implicit none
+
+integer, parameter :: nMaxMap = 20
+
+type Type3254DataStruct
+    ! Parameters
+    real(wp) :: QcRated, QcsRated, PtotRated, mDotInRated, fRated   ! rated values
+    integer :: nTr, nRHr, nTo, nmfr, nf   ! number of entries for each variable
+
+    ! Performance matrices (Choose better names?)
+    real(wp) :: Pel(nMaxMap, nMaxMap)
+    real(wp) :: Qevs(nMaxMap, nMaxMap)
+    real(wp) :: Qevl(nMaxMap, nMaxMap)
+
+end type Type3254DataStruct
+
+type(Type3254DataStruct), allocatable, save :: storedData(:)
+
+end module Type3254Data
+
+
 subroutine Type3254
 !export this subroutine for its use in external DLLs
 !DEC$Attributes DLLexport :: Type3254
@@ -73,6 +99,7 @@ use, intrinsic :: iso_fortran_env, only : wp=>real64    ! Defines a constant "wp
 
 use TrnsysConstants
 use TrnsysFunctions
+use Type3354Data
 
 implicit none
 
@@ -82,6 +109,7 @@ integer :: yControl, yHum, LUcool, nDBin, nWBin, nFlowRates, nDBoa, nf    ! Para
 real(wp) :: QcRated, QcsRated, PtotRated,mDotInRated, fRated    ! Parameters (rated values)
 real(wp) :: Tout, wOut, RHout, mDotOut, pOut    ! Outputs (outlet conditions)
 real(wp) :: Qc, Qcs, Qcl, Qrej, Ptot, Pcomp    ! Outputs (heat and power)
+real(wp) :: Pel(nMaxMap, nMaxMap), Qevs(nMaxMap, nMaxMap), Qevl(nMaxMap, nMaxMap)
 real(wp) :: COP, EER, Tcond, mDotCond    ! Outputs (misc)
 real(wp) :: x, y    ! arrays with inputs and outputs of interpolation
 integer :: nx, ny, nval    ! interpolation parameters
@@ -91,328 +119,369 @@ integer :: thisUnit, thisType    ! unit and type numbers
 ! Local variables
 real(wp) :: psyDat(9), TwbIn, hIn, hx, hOut
 integer :: psychMode, status
+integer :: thisInstanceNo = 1   ! temporary, should use a kernel function to get the actual unit number.
+character (len=maxPathLength) :: permapPath
+character (len=maxMessageLength) :: msg
+logical :: permapFileFound = .false.
+integer :: nTr, nRHr, nTo, nmfr, nfreq   ! number of entries for each variable
+integer :: i, j
+real(wp), allocatable :: TrValues(:),  RHrValues(:)
 
-! Get the Global Trnsys Simulation Variables
-time = getSimulationTime()
-timestep = getSimulationTimeStep()
-thisUnit = getCurrentUnit()
-thisType = getCurrentType()
-
-!--- Version signing call: set the version number for this Type --------------------------------------------------------
-
+! Set the version number for this Type
 if (GetIsVersionSigningTime()) then
-
-    Call SetTypeVersion(18)
+    call SetTypeVersion(18)
     return  ! We are done for this call
-
 endif
 
-! ---- Last call in the simulation (after last timestep has converged) -------------------------------------------------
-
-if (GetIsLastCallofSimulation()) then
-
-    ! This Type should not perform any task during the last call
-    return  ! We are done for this call
-
-endif
-
-! --- End of timestep call (after convergence or too many iterations) --------------------------------------------------
-
-if (GetIsEndOfTimestep()) then
-
-    return  ! We are done for this call
-
-endif
-
-! --- Very first call of simulation (initialization call) --------------------------------------------------------------
-
-if(getIsFirstCallofSimulation()) then
-
-  	! Tell the TRNSYS engine how this Type works
-  	call SetNumberofParameters(13)
-  	call SetNumberofInputs(11)
-  	call SetNumberofDerivatives(0)
-  	call SetNumberofOutputs(18)
-  	call SetIterationMode(1)    !An indicator for the iteration mode (default=1).  Refer to section 8.4.3.5 of the documentation for more details.
-  	call SetNumberStoredVariables(0,0)    !The number of static variables that the model wants stored in the global storage array and the number of dynamic variables that the model wants stored in the global storage array
-  	call SetNumberofDiscreteControls(0)   !The number of discrete control functions set by this model (a value greater than zero requires the user to use Solver 1: Powell's method)
-
-    ! Set units (optional)
-    call SetInputUnits(1,'TE1')    ! °C
-    call SetInputUnits(2,'DM1')    ! -
-    call SetInputUnits(3,'PC1')    ! %
-    call SetInputUnits(4,'MF1')    ! kg/h
-    call SetInputUnits(5,'PR4')    ! atm
-    call SetInputUnits(6,'TE1')    ! °C
-    ! call SetInputUnits(7,)    No frequency units ?
-    call SetInputUnits(8,'TE1')    ! °C
-    call SetInputUnits(9,'TE1')    ! °C
-    call SetInputUnits(10,'PW1')    ! kJ/h
-    call SetInputUnits(11,'PW1')    ! kJ/h
-
-    call SetOutputUnits(1,'TE1')    ! °C
-    call SetOutputUnits(2,'DM1')    ! -
-    call SetOutputUnits(3,'PC1')    ! %
-    call SetOutputUnits(4,'MF1')    ! kg/h
-    call SetOutputUnits(5,'PR4')    ! atm
-    call SetOutputUnits(6,'PW1')    ! kJ/h
-    call SetOutputUnits(7,'PW1')    ! kJ/h
-    call SetOutputUnits(8,'PW1')    ! kJ/h
-    call SetOutputUnits(9,'PW1')    ! kJ/h
-    call SetOutputUnits(10,'PW1')    ! kJ/h
-    call SetOutputUnits(11,'DM1')    ! -
-    call SetOutputUnits(12,'DM1')    ! -
-    call SetOutputUnits(13,'PW1')    ! kJ/h
-    call SetOutputUnits(14,'PW1')    ! kJ/h
-    call SetOutputUnits(15,'PW1')    ! kJ/h
-    call SetOutputUnits(16,'TE1')    ! °C
-    call SetOutputUnits(17,'MF1')    ! kg/h
-    ! call SetInputUnits(18,)    No frequency units ?
-
-  	return
-
-endif
-
-! --- Start time call: not a real time step, there are no iterations at the initial time - output initial conditions ---
-
-if (getIsStartTime()) then
-
-    yControl = getParameterValue(1)
-    yHum = getParameterValue(2)
-    LUcool = getParameterValue(3)
-    nDBin = getParameterValue(4)
-    nWBin = getParameterValue(5)
-    nFlowRates = getParameterValue(6)
-    nDBoa = getParameterValue(7)
-    nf = getParameterValue(8)
-    QcRated = getParameterValue(9)
-    QcsRated = getParameterValue(10)
-    PtotRated = getParameterValue(11)
-    mDotInRated = getParameterValue(12)
-    fRated = getParameterValue(13)
-
-
-    Tin = GetInputValue(1)
-    wIn = GetInputValue(2)
-    RHin = GetInputValue(3)
-    mDotIn = GetInputValue(4)
-    pIn = GetInputValue(5)
-    Toa = GetInputValue(6)
-    f = GetInputValue(7)
-    Tset = GetInputValue(8)
-    Tm = GetInputValue(9)
-    Pfani = GetInputValue(10)
-    Pfano = GetInputValue(11)
-
-
-   !Check the Parameters for Problems (#,ErrorType,Text)
-   !Sample Code: If( PAR1 <= 0.) Call FoundBadParameter(1,'Fatal','The first parameter provided to this model is not acceptable.')
-
-    ! Set outputs to zeros at initial time
-	call SetOutputValue(1, 0.0_wp) ! Outlet air temperature
-	call SetOutputValue(2, 0.0_wp) ! Outlet air humidity ratio
-	call SetOutputValue(3, 0.0_wp) ! Outlet air % RH
-	call SetOutputValue(4, 0.0_wp) ! Outlet air flow rate
-	call SetOutputValue(5, 0.0_wp) ! Outlet air pressure
-	call SetOutputValue(6, 0.0_wp) ! Total cooling rate
-	call SetOutputValue(7, 0.0_wp) ! Sensible cooling rate
-	call SetOutputValue(8, 0.0_wp) ! Latent cooling rate
-	call SetOutputValue(9, 0.0_wp) ! Heat rejection rate
-	call SetOutputValue(10, 0.0_wp) ! Total power consumption
-	call SetOutputValue(11, 0.0_wp) ! COP
-	call SetOutputValue(12, 0.0_wp) ! EER
-	call SetOutputValue(13, 0.0_wp) ! Indoor fan power
-	call SetOutputValue(14, 0.0_wp) ! Outdoor fan power
-	call SetOutputValue(15, 0.0_wp) ! Compressor power
-	call SetOutputValue(16, 0.0_wp) ! Condensate temperature
-	call SetOutputValue(17, 0.0_wp) ! Condensate flow rate
-	call SetOutputValue(18, 0.0_wp) ! Compressor frequency
-
-    return
-
-endif
-
-! --- TRNSYS has detected that parameters must be re-read - indicates another unit of this Type ------------------------
-
-if(getIsReReadParameters()) then
-
-    yControl = getParameterValue(1)
-    yHum = getParameterValue(2)
-    LUcool = getParameterValue(3)
-    nDBin = getParameterValue(4)
-    nWBin = getParameterValue(5)
-    nFlowRates = getParameterValue(6)
-    nDBoa = getParameterValue(7)
-    nf = getParameterValue(8)
-    QcRated = getParameterValue(9)
-    QcsRated = getParameterValue(10)
-    PtotRated = getParameterValue(11)
-    mDotInRated = getParameterValue(12)
-    fRated = getParameterValue(13)
-
-
-endif
-
-! --- Read inputs (for all calls except very first call in simulation) -------------------------------------------------
-
-Tin = GetInputValue(1)
-wIn = GetInputValue(2)
-RHin = GetInputValue(3)
-mDotIn = GetInputValue(4)
-pIn = GetInputValue(5)
-Toa = GetInputValue(6)
-f = GetInputValue(7)
-Tset = GetInputValue(8)
-Tm = GetInputValue(9)
-Pfani = GetInputValue(10)
-Pfano = GetInputValue(11)
-
-
-!Check the Inputs for Problems (#,ErrorType,Text)
-!Sample Code: If( IN1 <= 0.) Call FoundBadInput(1,'Fatal','The first input provided to this model is not acceptable.')
-
-if (ErrorFound()) return
-!-----------------------------------------------------------------------------------------------------------------------
-
-!-----------------------------------------------------------------------------------------------------------------------
-!    *** PERFORM ALL THE CALCULATION HERE FOR THIS MODEL. ***
-!-----------------------------------------------------------------------------------------------------------------------
-
-	!-----------------------------------------------------------------------------------------------------------------------
-	!If Needed, Get the Previous Control States if Discrete Controllers are Being Used (#)
-	!Sample Code: CONTROL_LAST=getPreviousControlState(1)
-	!-----------------------------------------------------------------------------------------------------------------------
-
-	!-----------------------------------------------------------------------------------------------------------------------
-	!If Needed, Get the Values from the Global Storage Array for the Static Variables (#)
-	!Sample Code: STATIC1=getStaticArrayValue(1)
-	!-----------------------------------------------------------------------------------------------------------------------
-
-	!-----------------------------------------------------------------------------------------------------------------------
-	!If Needed, Get the Initial Values of the Dynamic Variables from the Global Storage Array (#)
-	!Sample Code: T_INITIAL_1=getDynamicArrayValueLastTimestep(1)
-	!-----------------------------------------------------------------------------------------------------------------------
-
-! Inlet air state
-psyDat(1) = pIn
-psyDat(2) = Tin
-psyDat(4) = RHin/100.0_wp
-psyDat(6) = wIn
-if (yHum == 1) then
-    psychMode = 4
-else
-    psychMode = 2
-endif
-call MoistAirProperties(thisUnit, thisType, 1, psychMode, 0, psyDat, 1, status) ! unit, type, si units used, psych inputs, Twb not computed, inputs, warnings mgmt, warning occurrences 
-pIn = psyDat(1)
-Tin = psyDat(2)
-TwbIn = psydat(3)
-RHin = psyDat(4)    ! RHin between 0 and 1 (not 0 and 100)
-wIn = psyDat(6)
-hIn = psyDat(7)
-
-! Find cooling performance from data file
-nx = 5
-nval(5) = nDBin
-nval(4) = nDBoa
-nval(3) = nWBin
-nval(2) = nf
-nval(1) = nFlowRates
-x(1) = mDotIn/mDotInRated
-x(2) = f/fRated
-x(3) = TwbIn
-x(4) = Toa
-x(5) = Tin
-ny = 3
-call InterpolateData(LUcool,nx,nval,ny,x,y)
+call GetTRNSYSvariables()
+call ExecuteSpecialCases()
+call GetInputValues()
 if (ErrorFound()) return
 
-Qc = QcRated * y(1)
-Qcs = QcsRated * y(2)
-Ptot = PtotRated * y(3)
+call ReadEntries()
 
-! Outlet air state
-mDotOut = mDotIn    ! Dry air mass conservation
-pOut = pIn    ! Fan pressure drop neglected
+!! Inlet air state
+!psyDat(1) = pIn
+!psyDat(2) = Tin
+!psyDat(4) = RHin/100.0_wp
+!psyDat(6) = wIn
+!if (yHum == 1) then
+!    psychMode = 4
+!else
+!    psychMode = 2
+!endif
+!call MoistAirProperties(thisUnit, thisType, 1, psychMode, 0, psyDat, 1, status) ! unit, type, si units used, psych inputs, Twb not computed, inputs, warnings mgmt, warning occurrences 
+!pIn = psyDat(1)
+!Tin = psyDat(2)
+!TwbIn = psydat(3)
+!RHin = psyDat(4)    ! RHin between 0 and 1 (not 0 and 100)
+!wIn = psyDat(6)
+!hIn = psyDat(7)
+!
+!! Find cooling performance from data file
+!nx = 5
+!nval(5) = nDBin
+!nval(4) = nDBoa
+!nval(3) = nWBin
+!nval(2) = nf
+!nval(1) = nFlowRates
+!x(1) = mDotIn/mDotInRated
+!x(2) = f/fRated
+!x(3) = TwbIn
+!x(4) = Toa
+!x(5) = Tin
+!ny = 3
+!call InterpolateData(LUcool,nx,nval,ny,x,y)
+!if (ErrorFound()) return
+!
+!Qc = QcRated * y(1)
+!Qcs = QcsRated * y(2)
+!Ptot = PtotRated * y(3)
+!
+!! Outlet air state
+!mDotOut = mDotIn    ! Dry air mass conservation
+!pOut = pIn    ! Fan pressure drop neglected
+!
+!! Moist air state
+!if (Qc < Qcs) then
+!    Qc = Qcs
+!    ! Add warning
+!endif
+!
+!if (mDotOut /= 0) then
+!    hOut = hIn - Qc/mDotOut
+!    wOut = wIn    ! useful when the following if clause is not true
+!    hx = hIn      ! same
+!    if (Qc > Qcs) then    ! nonzero latent heat
+!        psyDat(1) = pIn
+!        psyDat(2) = Tin
+!        hx = hIn - (Qc - Qcs)/mDotIn
+!        psyDat(7) = hx    ! enthalpy of the state (Tin, wOut)
+!        call MoistAirProperties(thisUnit, thisType, 1, 5, 0, psyDat, 1, status)    ! dry-bulb and enthalpy as inputs
+!        if (ErrorFound()) return
+!        wOut = psyDat(6)
+!    endif
+!else
+!    hOut = hIn
+!    wOut = wIn
+!    hx = hIn
+!endif
+!
+!psyDat(1) = pOut
+!psyDat(6) = wOut
+!psyDat(7) = hOut
+!call MoistAirProperties(thisUnit, thisType, 1, 7, 0, psyDat, 1, status)    ! humidity ratio and enthalpy as inputs
+!if (ErrorFound()) return
+!pOut = psyDat(1)
+!Tout = psydat(2)
+!RHout = psydat(4)
+!wOut = psydat(6)
+!hOut = psydat(7)
+!
+!! Re-calculate heat transfer whose value is modified if saturation occurs
+!Qc = mDotOut * (hIn - hOut)    ! Total cooling rate
+!Qcs = mDotOut * (hx - hOut)    ! Sensible cooling rate
+!Qcl = Qc - Qcs    ! Latent cooling rate
+!Qrej = Qc + Ptot    ! Heat rejection
+!Pcomp = Ptot - PfanI - PfanO    ! Compressor power
+!if (Ptot /= 0.) then
+!    COP = Qc/Ptot
+!else
+!    COP = 0.0_wp
+!endif
+!EER = 3.413_wp * COP
+!Tcond = Tout
+!mDotCond = mDotOut * (wIn - wOut)    ! Condensate flow rate - water balance
 
-! Moist air state
-if (Qc < Qcs) then
-    Qc = Qcs
-    ! Add warning
-endif
-
-if (mDotOut /= 0) then
-    hOut = hIn - Qc/mDotOut
-    wOut = wIn    ! useful when the following if clause is not true
-    hx = hIn      ! same
-    if (Qc > Qcs) then    ! nonzero latent heat
-        psyDat(1) = pIn
-        psyDat(2) = Tin
-        hx = hIn - (Qc - Qcs)/mDotIn
-        psyDat(7) = hx    ! enthalpy of the state (Tin, wOut)
-        call MoistAirProperties(thisUnit, thisType, 1, 5, 0, psyDat, 1, status)    ! dry-bulb and enthalpy as inputs
-        if (ErrorFound()) return
-        wOut = psyDat(6)
-    endif
-else
-    hOut = hIn
-    wOut = wIn
-    hx = hIn
-endif
-
-psyDat(1) = pOut
-psyDat(6) = wOut
-psyDat(7) = hOut
-call MoistAirProperties(thisUnit, thisType, 1, 7, 0, psyDat, 1, status)    ! humidity ratio and enthalpy as inputs
-if (ErrorFound()) return
-pOut = psyDat(1)
-Tout = psydat(2)
-RHout = psydat(4)
-wOut = psydat(6)
-hOut = psydat(7)
-
-! Re-calculate heat transfer whose value is modified if saturation occurs
-Qc = mDotOut * (hIn - hOut)    ! Total cooling rate
-Qcs = mDotOut * (hx - hOut)    ! Sensible cooling rate
-Qcl = Qc - Qcs    ! Latent cooling rate
-Qrej = Qc + Ptot    ! Heat rejection
-Pcomp = Ptot - PfanI - PfanO    ! Compressor power
-if (Ptot /= 0.) then
-    COP = Qc/Ptot
-else
-    COP = 0.0_wp
-endif
-EER = 3.413_wp * COP
-Tcond = Tout
-mDotCond = mDotOut * (wIn - wOut)    ! Condensate flow rate - water balance
-
-
-!Set the Outputs from this Model (#,Value)
-Call SetOutputValue(1, Tout) ! Outlet air temperature
-Call SetOutputValue(2, wOut) ! Outlet air humidity ratio
-Call SetOutputValue(3, RHout*100.0_wp) ! Outlet air % RH
-Call SetOutputValue(4, mDotOut) ! Outlet air flow rate
-Call SetOutputValue(5, pOut) ! Outlet air pressure
-Call SetOutputValue(6, Qc) ! Total cooling rate
-Call SetOutputValue(7, Qcs) ! Sensible cooling rate
-Call SetOutputValue(8, Qcl) ! Latent cooling rate
-Call SetOutputValue(9, Qrej) ! Heat rejection rate
-Call SetOutputValue(10, Ptot) ! Total power consumption
-Call SetOutputValue(11, COP) ! COP
-Call SetOutputValue(12, EER) ! EER
-Call SetOutputValue(13, PfanI) ! Indoor fan power
-Call SetOutputValue(14, PfanO) ! Outdoor fan power
-Call SetOutputValue(15, Pcomp) ! Compressor power
-Call SetOutputValue(16, Tcond) ! Condensate temperature
-Call SetOutputValue(17, mDotCond) ! Condensate flow rate
-Call SetOutputValue(18, f) ! Compressor frequency
+call SetOutputValues()
 
 return
 
-! contains
-! subroutine ...
-! ...
-! end
-! types 155, 28
+    contains
+    
+    subroutine ReadEntries
+    
+    permapPath = GetLUfileName(LUcool)
+    
+    inquire(file=trim(permapPath), exist=permapFileFound)
+    
+    if ( .not. permapFileFound ) then
+        write(msg,'("""",a,"""")') trim(permapPath)
+        msg = "Could not find the specified performance map file. Searched for: " // trim(msg)
+        call Messages(-1, msg, 'fatal', thisUnit, thisType)
+        return
+    endif
+    
+    open(LUcool, file=permapPath, status='old')
+    
+    ! Skip 7 lines
+    do i = 1, 7
+        read(LUcool, *)
+    enddo
+    
+    ! Read number of Tr values
+    read(LUcool, *) nTr
+    ! Skip line
+    read(LUcool, *)
+    ! Read Tr values
+    allocate(TrValues(nTr))
+    read(LUcool, *) (TrValues(i), i = 1, nTr)
+    ! Skip line
+    read(LUcool, *)
+    ! Read number of RHr values
+    read(LUcool, *) nRHr
+    ! Skip line
+    read(LUcool, *)
+    allocate(RHrValues(nRHr))
+    ! Read RHr values
+    read(LUcool, *) (RHrValues(i), i = 1, nRHr)
+    
+    close(LUcool)
+    
+    end subroutine ReadEntries
+    
+    
+    subroutine ExecuteSpecialCases
+    
+    ! All the stuff that must be done once at the beginning
+    if(getIsFirstCallofSimulation()) then
+
+  	    ! Tell the TRNSYS engine how this Type works
+  	    call SetNumberofParameters(13)
+  	    call SetNumberofInputs(11)
+  	    call SetNumberofDerivatives(0)
+  	    call SetNumberofOutputs(18)
+  	    call SetIterationMode(1)    !An indicator for the iteration mode (default=1).  Refer to section 8.4.3.5 of the documentation for more details.
+  	    call SetNumberStoredVariables(0,0)    !The number of static variables that the model wants stored in the global storage array and the number of dynamic variables that the model wants stored in the global storage array
+  	    call SetNumberofDiscreteControls(0)   !The number of discrete control functions set by this model (a value greater than zero requires the user to use Solver 1: Powell's method)
+    
+        yControl = getParameterValue(1)
+        yHum = getParameterValue(2)
+        LUcool = getParameterValue(3)
+        nDBin = getParameterValue(4)
+        nWBin = getParameterValue(5)
+        nFlowRates = getParameterValue(6)
+        nDBoa = getParameterValue(7)
+        nf = getParameterValue(8)
+        QcRated = getParameterValue(9)
+        QcsRated = getParameterValue(10)
+        PtotRated = getParameterValue(11)
+        mDotInRated = getParameterValue(12)
+        fRated = getParameterValue(13)
+
+        ! Set units (optional)
+        call SetInputUnits(1,'TE1')    ! °C
+        call SetInputUnits(2,'DM1')    ! -
+        call SetInputUnits(3,'PC1')    ! %
+        call SetInputUnits(4,'MF1')    ! kg/h
+        call SetInputUnits(5,'PR4')    ! atm
+        call SetInputUnits(6,'TE1')    ! °C
+        ! call SetInputUnits(7,)    No frequency units ?
+        call SetInputUnits(8,'TE1')    ! °C
+        call SetInputUnits(9,'TE1')    ! °C
+        call SetInputUnits(10,'PW1')    ! kJ/h
+        call SetInputUnits(11,'PW1')    ! kJ/h
+
+        call SetOutputUnits(1,'TE1')    ! °C
+        call SetOutputUnits(2,'DM1')    ! -
+        call SetOutputUnits(3,'PC1')    ! %
+        call SetOutputUnits(4,'MF1')    ! kg/h
+        call SetOutputUnits(5,'PR4')    ! atm
+        call SetOutputUnits(6,'PW1')    ! kJ/h
+        call SetOutputUnits(7,'PW1')    ! kJ/h
+        call SetOutputUnits(8,'PW1')    ! kJ/h
+        call SetOutputUnits(9,'PW1')    ! kJ/h
+        call SetOutputUnits(10,'PW1')    ! kJ/h
+        call SetOutputUnits(11,'DM1')    ! -
+        call SetOutputUnits(12,'DM1')    ! -
+        call SetOutputUnits(13,'PW1')    ! kJ/h
+        call SetOutputUnits(14,'PW1')    ! kJ/h
+        call SetOutputUnits(15,'PW1')    ! kJ/h
+        call SetOutputUnits(16,'TE1')    ! °C
+        call SetOutputUnits(17,'MF1')    ! kg/h
+        ! call SetInputUnits(18,)    No frequency units ?
+
+  	    return
+
+    endif
+    
+    ! Start of the first timestep: no iterations, outputs initial conditions
+    if (getIsStartTime()) then
+        
+        yControl = getParameterValue(1)
+        yHum = getParameterValue(2)
+        LUcool = getParameterValue(3)
+        nDBin = getParameterValue(4)
+        nWBin = getParameterValue(5)
+        nFlowRates = getParameterValue(6)
+        nDBoa = getParameterValue(7)
+        nf = getParameterValue(8)
+        QcRated = getParameterValue(9)
+        QcsRated = getParameterValue(10)
+        PtotRated = getParameterValue(11)
+        mDotInRated = getParameterValue(12)
+        fRated = getParameterValue(13)
+
+
+        Tin = GetInputValue(1)
+        wIn = GetInputValue(2)
+        RHin = GetInputValue(3)
+        mDotIn = GetInputValue(4)
+        pIn = GetInputValue(5)
+        Toa = GetInputValue(6)
+        f = GetInputValue(7)
+        Tset = GetInputValue(8)
+        Tm = GetInputValue(9)
+        Pfani = GetInputValue(10)
+        Pfano = GetInputValue(11)
+
+
+       !Check the Parameters for Problems (#,ErrorType,Text)
+       !Sample Code: If( PAR1 <= 0.) call FoundBadParameter(1,'Fatal','The first parameter provided to this model is not acceptable.')
+
+        ! Set outputs to zeros at initial time
+	    call SetOutputValue(1, 0.0_wp) ! Outlet air temperature
+	    call SetOutputValue(2, 0.0_wp) ! Outlet air humidity ratio
+	    call SetOutputValue(3, 0.0_wp) ! Outlet air % RH
+	    call SetOutputValue(4, 0.0_wp) ! Outlet air flow rate
+	    call SetOutputValue(5, 0.0_wp) ! Outlet air pressure
+	    call SetOutputValue(6, 0.0_wp) ! Total cooling rate
+	    call SetOutputValue(7, 0.0_wp) ! Sensible cooling rate
+	    call SetOutputValue(8, 0.0_wp) ! Latent cooling rate
+	    call SetOutputValue(9, 0.0_wp) ! Heat rejection rate
+	    call SetOutputValue(10, 0.0_wp) ! Total power consumption
+	    call SetOutputValue(11, 0.0_wp) ! COP
+	    call SetOutputValue(12, 0.0_wp) ! EER
+	    call SetOutputValue(13, 0.0_wp) ! Indoor fan power
+	    call SetOutputValue(14, 0.0_wp) ! Outdoor fan power
+	    call SetOutputValue(15, 0.0_wp) ! Compressor power
+	    call SetOutputValue(16, 0.0_wp) ! Condensate temperature
+	    call SetOutputValue(17, 0.0_wp) ! Condensate flow rate
+	    call SetOutputValue(18, 0.0_wp) ! Compressor frequency
+
+        return
+
+    endif
+    
+    ! Parameters must be re-read - indicates another unit of this Type
+    if(getIsReReadParameters()) then
+
+        yControl = getParameterValue(1)
+        yHum = getParameterValue(2)
+        LUcool = getParameterValue(3)
+        nDBin = getParameterValue(4)
+        nWBin = getParameterValue(5)
+        nFlowRates = getParameterValue(6)
+        nDBoa = getParameterValue(7)
+        nf = getParameterValue(8)
+        QcRated = getParameterValue(9)
+        QcsRated = getParameterValue(10)
+        PtotRated = getParameterValue(11)
+        mDotInRated = getParameterValue(12)
+        fRated = getParameterValue(13)
+    
+        ! Retrieved Stored data
+        !Pel = storedData(thisInstanceNo)%Pel
+        !Qevs = storedData(thisInstanceNo)%Qevs
+        !Qevl = storedData(thisInstanceNo)%Qevl
+    
+    endif
+    
+    ! End of timestep call (after convergence or too many iterations)
+    if (GetIsEndOfTimestep()) then
+        return  ! We are done for this call
+    endif
+    
+    if (GetIsLastCallofSimulation()) then
+        ! This Type should not perform any task during the last call
+        return  ! We are done for this call
+    endif
+    
+    end subroutine ExecuteSpecialCases
+    
+    subroutine GetInputValues
+        Tin = GetInputValue(1)
+        wIn = GetInputValue(2)
+        RHin = GetInputValue(3)
+        mDotIn = GetInputValue(4)
+        pIn = GetInputValue(5)
+        Toa = GetInputValue(6)
+        f = GetInputValue(7)
+        Tset = GetInputValue(8)
+        Tm = GetInputValue(9)
+        Pfani = GetInputValue(10)
+        Pfano = GetInputValue(11)
+        !Check the Inputs for Problems (#,ErrorType,Text)
+        !Sample Code: If( IN1 <= 0.) call FoundBadInput(1,'Fatal','The first input provided to this model is not acceptable.')
+    end subroutine GetInputValues
+    
+    
+    subroutine SetOutputValues
+        call SetOutputValue(1, Tout) ! Outlet air temperature
+        call SetOutputValue(2, wOut) ! Outlet air humidity ratio
+        call SetOutputValue(3, RHout*100.0_wp) ! Outlet air % RH
+        call SetOutputValue(4, mDotOut) ! Outlet air flow rate
+        call SetOutputValue(5, pOut) ! Outlet air pressure
+        call SetOutputValue(6, Qc) ! Total cooling rate
+        call SetOutputValue(7, Qcs) ! Sensible cooling rate
+        call SetOutputValue(8, Qcl) ! Latent cooling rate
+        call SetOutputValue(9, Qrej) ! Heat rejection rate
+        call SetOutputValue(10, Ptot) ! Total power consumption
+        call SetOutputValue(11, COP) ! COP
+        call SetOutputValue(12, EER) ! EER
+        call SetOutputValue(13, PfanI) ! Indoor fan power
+        call SetOutputValue(14, PfanO) ! Outdoor fan power
+        call SetOutputValue(15, Pcomp) ! Compressor power
+        call SetOutputValue(16, Tcond) ! Condensate temperature
+        call SetOutputValue(17, mDotCond) ! Condensate flow rate
+        call SetOutputValue(18, f) ! Compressor frequency
+    end subroutine SetOutputValues
+    
+    subroutine GetTRNSYSvariables
+        time = getSimulationTime()
+        timestep = getSimulationTimeStep()
+        thisUnit = getCurrentUnit()
+        thisType = getCurrentType()
+    end subroutine GetTRNSYSvariables
 
 end subroutine Type3254
