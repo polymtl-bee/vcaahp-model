@@ -99,7 +99,7 @@ use, intrinsic :: iso_fortran_env, only : wp=>real64    ! Defines a constant "wp
 
 use TrnsysConstants
 use TrnsysFunctions
-use Type3354Data
+use Type3254Data
 
 implicit none
 
@@ -115,17 +115,25 @@ real(wp) :: x, y    ! arrays with inputs and outputs of interpolation
 integer :: nx, ny, nval    ! interpolation parameters
 dimension :: x(5), y(3), nval(5)
 integer :: thisUnit, thisType    ! unit and type numbers
+integer, parameter :: N = 5   ! Number of interpolation variables
+integer :: extents(N)  ! Number of values for each interpolation variable
 
 ! Local variables
-real(wp) :: psyDat(9), TwbIn, hIn, hx, hOut
-integer :: psychMode, status
+!real(wp) :: psyDat(9), TwbIn, hIn, hx, hOut
+!integer :: psychMode, status
 integer :: thisInstanceNo = 1   ! temporary, should use a kernel function to get the actual unit number.
+
+! Interpolation variables
 character (len=maxPathLength) :: permapPath
 character (len=maxMessageLength) :: msg
 logical :: permapFileFound = .false.
 integer :: nTr, nRHr, nTo, nmfr, nfreq   ! number of entries for each variable
 integer :: i, j
-real(wp), allocatable :: TrValues(:),  RHrValues(:)
+real(wp), allocatable, dimension(:) :: TrValues,  RHrValues, ToValues, mfrValues, freqValues
+integer, allocatable :: entries(:, :)
+real(wp), allocatable :: perf_data(:, :, :, :, :)   ! N dimensions
+integer :: idx(N)
+real(wp) :: PMvalue
 
 ! Set the version number for this Type
 if (GetIsVersionSigningTime()) then
@@ -137,8 +145,6 @@ call GetTRNSYSvariables()
 call ExecuteSpecialCases()
 call GetInputValues()
 if (ErrorFound()) return
-
-call ReadEntries()
 
 !! Inlet air state
 !psyDat(1) = pIn
@@ -239,7 +245,7 @@ return
 
     contains
     
-    subroutine ReadEntries
+    subroutine ReadPermap
     
     permapPath = GetLUfileName(LUcool)
     
@@ -254,31 +260,77 @@ return
     
     open(LUcool, file=permapPath, status='old')
     
-    ! Skip 7 lines
-    do i = 1, 7
-        read(LUcool, *)
-    enddo
-    
-    ! Read number of Tr values
-    read(LUcool, *) nTr
-    ! Skip line
-    read(LUcool, *)
-    ! Read Tr values
-    allocate(TrValues(nTr))
+        do i = 1, 7   ! Skip 7 lines
+            read(LUcool, *)
+        enddo
+    read(LUcool, *) nTr   ! Read number of Tr values
+        read(LUcool, *)   ! Skip line
+    allocate(TrValues(nTr))   ! Read Tr values
     read(LUcool, *) (TrValues(i), i = 1, nTr)
-    ! Skip line
-    read(LUcool, *)
-    ! Read number of RHr values
+        read(LUcool, *)   ! Skip line
     read(LUcool, *) nRHr
-    ! Skip line
-    read(LUcool, *)
+        read(LUcool, *)
     allocate(RHrValues(nRHr))
-    ! Read RHr values
     read(LUcool, *) (RHrValues(i), i = 1, nRHr)
-    
+        read(LUcool, *)
+    read(LUcool, *) nTo
+        read(LUcool, *)
+    allocate(ToValues(nTo))
+    read(LUcool, *) (ToValues(i), i = 1, nTo)
+        read(LUcool, *)
+    read(LUcool, *) nmfr
+        read(LUcool, *)
+    allocate(mfrValues(nmfr))
+    read(LUcool, *) (mfrValues(i), i = 1, nmfr)
+        read(LUcool, *)
+    read(LUcool, *) nfreq
+        read(LUcool, *)
+    allocate(freqValues(nfreq))
+    read(LUcool, *) (freqValues(i), i = 1, nfreq)
+        do i = 1, 4   ! Skip 4 lines
+            read(LUcool, *)
+        end do
+    allocate(perf_data(nTr, nRHr, nTo, nmfr, nfreq))
+    extents = shape(perf_data)
+    allocate(entries(N, maxval(extents)))
     close(LUcool)
     
-    end subroutine ReadEntries
+    idx = (/1, 1, 1, 1, 2/)
+    PMvalue = 35.2
+    call SetPMvalue(perf_data, idx, PMvalue)
+    idx = (/1, 1, 1, 1, 1/)
+    PMvalue = 56.1
+    call SetPMvalue(perf_data, idx, PMvalue)
+    idx = (/1, 1, 1, 1, 2/)
+    PMvalue = GetPMvalue(perf_data, idx)
+    
+    end subroutine ReadPermap
+    
+    
+    function GetPMvalue(array, idx)
+        integer, intent(in) :: idx(:)
+        integer :: i, array_idx
+        real(wp) :: array(product(extents))
+        real(wp) :: GetPMvalue
+        array_idx = idx(1)
+        do i = 2, size(idx)
+            array_idx = array_idx + product(extents(:i-1)) * (idx(i) - 1)
+        end do
+        GetPMvalue = array(array_idx)
+    end function GetPMvalue
+    
+    
+    subroutine SetPMvalue(array, idx, value)
+        real(wp) :: array(product(extents))
+        real(wp), intent(in) :: value
+        integer, intent(in) :: idx(:)
+        integer :: i, array_idx
+        array_idx = idx(1)
+        do i = 2, size(idx)
+            array_idx = array_idx + product(extents(:i-1)) * (idx(i) - 1)
+        end do
+        array(array_idx) = value
+    end subroutine SetPMvalue
     
     
     subroutine ExecuteSpecialCases
@@ -374,6 +426,8 @@ return
         Tm = GetInputValue(9)
         Pfani = GetInputValue(10)
         Pfano = GetInputValue(11)
+        
+        call ReadPermap()
 
 
        !Check the Parameters for Problems (#,ErrorType,Text)
