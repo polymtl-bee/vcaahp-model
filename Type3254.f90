@@ -77,12 +77,14 @@ integer, parameter :: nMaxMap = 20
 type Type3254DataStruct
     ! Parameters
     real(wp) :: QcRated, QcsRated, PtotRated, mDotInRated, fRated   ! rated values
-    integer :: nTr, nRHr, nTo, nmfr, nf   ! number of entries for each variable
+    integer :: nTr, nRHr, nTo, nmfr, nfreq   ! number of entries for each variable
+    real(wp), allocatable :: entries(:, :)
+    real(wp), allocatable :: extents(:)
 
     ! Performance matrices (Choose better names?)
-    real(wp) :: Pel(nMaxMap, nMaxMap)
-    real(wp) :: Qevs(nMaxMap, nMaxMap)
-    real(wp) :: Qevl(nMaxMap, nMaxMap)
+    real(wp), allocatable :: PelMap(:, :, :, :, :)
+    real(wp), allocatable :: QcsMap(:, :, :, :, :)
+    real(wp), allocatable :: QclMap(:, :, :, :, :)
 
 end type Type3254DataStruct
 
@@ -121,8 +123,9 @@ integer :: extents(N)  ! Number of values for each interpolation variable
 ! Local variables
 !real(wp) :: psyDat(9), TwbIn, hIn, hx, hOut
 !integer :: psychMode, status
+integer, parameter :: NumOfInstances = 1
 integer :: thisInstanceNo = 1   ! temporary, should use a kernel function to get the actual unit number.
-real(wp) :: filler(N)
+real(wp) :: filler(N), PMvalue
 
 ! Interpolation variables
 character (len=maxPathLength) :: permapPath
@@ -136,7 +139,6 @@ real(wp), allocatable :: PelMap(:, :, :, :, :)   ! N dimensions
 real(wp), allocatable :: QcsMap(:, :, :, :, :)
 real(wp), allocatable :: QclMap(:, :, :, :, :)
 integer :: idx(N) = 1
-real(wp) :: PMvalue
 
 ! Set the version number for this Type
 if (GetIsVersionSigningTime()) then
@@ -148,6 +150,21 @@ call GetTRNSYSvariables()
 call ExecuteSpecialCases()
 call GetInputValues()
 if (ErrorFound()) return
+
+nTr = storedData(thisInstanceNo)%nTr
+nRHr = storedData(thisInstanceNo)%nRHr
+nTo = storedData(thisInstanceNo)%nTo
+nmfr = storedData(thisInstanceNo)%nmfr
+nfreq = storedData(thisInstanceNo)%nfreq
+extents = storedData(thisInstanceNo)%extents
+allocate(entries(N, maxval(extents)))
+allocate(PelMap(nTr, nRHr, nTo, nmfr, nfreq))
+allocate(QcsMap(nTr, nRHr, nTo, nmfr, nfreq))
+allocate(QclMap(nTr, nRHr, nTo, nmfr, nfreq))
+entries = storedData(thisInstanceNo)%entries
+PelMap = storedData(thisInstanceNo)%PelMap
+QcsMap = storedData(thisInstanceNo)%QcsMap
+QclMap = storedData(thisInstanceNo)%QclMap
 
 !! Inlet air state
 !psyDat(1) = pIn
@@ -325,6 +342,26 @@ return
     
     ! make a check ?
     
+    storedData(thisInstanceNo)%nTr = nTr
+    storedData(thisInstanceNo)%nRHr = nRHr
+    storedData(thisInstanceNo)%nTo = nTo
+    storedData(thisInstanceNo)%nmfr = nmfr
+    storedData(thisInstanceNo)%nfreq = nfreq
+    allocate(storedData(NumOfInstances)%extents(N))
+    allocate(storedData(NumOfInstances)%entries(N, maxval(extents)))
+    allocate(storedData(NumOfInstances)%PelMap(nTr, nRHr, nTo, nmfr, nfreq))
+    allocate(storedData(NumOfInstances)%QcsMap(nTr, nRHr, nTo, nmfr, nfreq))
+    allocate(storedData(NumOfInstances)%QclMap(nTr, nRHr, nTo, nmfr, nfreq))
+    storedData(thisInstanceNo)%extents = extents
+    storedData(thisInstanceNo)%entries = entries
+    storedData(thisInstanceNo)%PelMap = PelMap
+    storedData(thisInstanceNo)%QcsMap = QcsMap
+    storedData(thisInstanceNo)%QclMap = QclMap
+    deallocate(entries)
+    deallocate(PelMap)
+    deallocate(QcsMap)
+    deallocate(QclMap)
+    
     end subroutine ReadPermap
     
     
@@ -367,7 +404,12 @@ return
   	    call SetIterationMode(1)    !An indicator for the iteration mode (default=1).  Refer to section 8.4.3.5 of the documentation for more details.
   	    call SetNumberStoredVariables(0,0)    !The number of static variables that the model wants stored in the global storage array and the number of dynamic variables that the model wants stored in the global storage array
   	    call SetNumberofDiscreteControls(0)   !The number of discrete control functions set by this model (a value greater than zero requires the user to use Solver 1: Powell's method)
-    
+        
+        ! Allocate stored data structure
+        if (.not. allocated(storedData)) then
+            allocate(storedData(numOfInstances))
+        endif
+        
         yControl = getParameterValue(1)
         yHum = getParameterValue(2)
         LUcool = getParameterValue(3)
@@ -381,6 +423,8 @@ return
         PtotRated = getParameterValue(11)
         mDotInRated = getParameterValue(12)
         fRated = getParameterValue(13)
+        
+        call ReadPermap()
 
         ! Set units (optional)
         call SetInputUnits(1,'TE1')    ! °C
@@ -447,9 +491,6 @@ return
         Tm = GetInputValue(9)
         Pfani = GetInputValue(10)
         Pfano = GetInputValue(11)
-        
-        call ReadPermap()
-
 
        !Check the Parameters for Problems (#,ErrorType,Text)
        !Sample Code: If( PAR1 <= 0.) call FoundBadParameter(1,'Fatal','The first parameter provided to this model is not acceptable.')
@@ -504,6 +545,10 @@ return
     
     ! End of timestep call (after convergence or too many iterations)
     if (GetIsEndOfTimestep()) then
+        deallocate(entries)
+        deallocate(PelMap)
+        deallocate(QcsMap)
+        deallocate(QclMap)
         return  ! We are done for this call
     endif
     
