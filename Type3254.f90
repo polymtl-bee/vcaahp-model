@@ -108,8 +108,8 @@ real(wp) :: Tin, wIn, RHin, mDotIn, pIn, Toa, f, Tset, Tm, PfanI, PfanO    ! Inp
 integer :: yControl, yHum, LUcool, nDBin, nWBin, nFlowRates, nDBoa, nf    ! Parameters
 real(wp) :: QcRated, QcsRated, PtotRated,mDotInRated, fRated    ! Parameters (rated values)
 real(wp) :: Tout, wOut, RHout, mDotOut, pOut    ! Outputs (outlet conditions)
-real(wp) :: Qc, Qcs, Qcl, Qrej, Ptot, Pcomp    ! Outputs (heat and power)
-real(wp) :: Pel(nMaxMap, nMaxMap), Qevs(nMaxMap, nMaxMap), Qevl(nMaxMap, nMaxMap)
+real(wp) :: Qc, Qcs, Qcl, Qrej, Pel, Ptot, Pcomp    ! Outputs (heat and power)
+!real(wp) :: Pel(nMaxMap, nMaxMap), Qevs(nMaxMap, nMaxMap), Qevl(nMaxMap, nMaxMap)
 real(wp) :: COP, EER, Tcond, mDotCond    ! Outputs (misc)
 real(wp) :: x, y    ! arrays with inputs and outputs of interpolation
 integer :: nx, ny, nval    ! interpolation parameters
@@ -122,17 +122,20 @@ integer :: extents(N)  ! Number of values for each interpolation variable
 !real(wp) :: psyDat(9), TwbIn, hIn, hx, hOut
 !integer :: psychMode, status
 integer :: thisInstanceNo = 1   ! temporary, should use a kernel function to get the actual unit number.
+real(wp) :: filler(N)
 
 ! Interpolation variables
 character (len=maxPathLength) :: permapPath
 character (len=maxMessageLength) :: msg
 logical :: permapFileFound = .false.
 integer :: nTr, nRHr, nTo, nmfr, nfreq   ! number of entries for each variable
-integer :: i, j
+integer :: i, j, line_count = 1, prev_line
 real(wp), allocatable, dimension(:) :: TrValues,  RHrValues, ToValues, mfrValues, freqValues
 integer, allocatable :: entries(:, :)
-real(wp), allocatable :: perf_data(:, :, :, :, :)   ! N dimensions
-integer :: idx(N)
+real(wp), allocatable :: PelMap(:, :, :, :, :)   ! N dimensions
+real(wp), allocatable :: QcsMap(:, :, :, :, :)
+real(wp), allocatable :: QclMap(:, :, :, :, :)
+integer :: idx(N) = 1
 real(wp) :: PMvalue
 
 ! Set the version number for this Type
@@ -256,7 +259,7 @@ return
         msg = "Could not find the specified performance map file. Searched for: " // trim(msg)
         call Messages(-1, msg, 'fatal', thisUnit, thisType)
         return
-    endif
+    end if
     
     open(LUcool, file=permapPath, status='old')
     
@@ -290,19 +293,37 @@ return
         do i = 1, 4   ! Skip 4 lines
             read(LUcool, *)
         end do
-    allocate(perf_data(nTr, nRHr, nTo, nmfr, nfreq))
-    extents = shape(perf_data)
+    allocate(PelMap(nTr, nRHr, nTo, nmfr, nfreq))
+    allocate(QcsMap(nTr, nRHr, nTo, nmfr, nfreq))
+    allocate(QclMap(nTr, nRHr, nTo, nmfr, nfreq))
+    extents = shape(PelMap)
     allocate(entries(N, maxval(extents)))
+    
+    read(LUcool, *) (filler(i), i = 1, N), Pel, Qcs, Qcl
+    call SetPMvalue(PelMap, idx, Pel)
+    call SetPMvalue(QcsMap, idx, Qcs)
+    call SetPMvalue(QclMap, idx, Qcl)
+    do while (sum(idx) < sum(extents))
+        prev_line = line_count
+        i = 1
+        do while (prev_line == line_count)
+            if (idx(i) == extents(i)) then
+                i = i + 1
+                if (i > 1) idx(i-1) = 1
+            else
+                idx(i) = idx(i) + 1
+                line_count = line_count + 1
+                read(LUcool, *) (filler(j), j = 1, N), Pel, Qcs, Qcl
+                call SetPMvalue(PelMap, idx, Pel)
+                call SetPMvalue(QcsMap, idx, Qcs)
+                call SetPMvalue(QclMap, idx, Qcl)
+            end if
+        end do
+    end do
+    
     close(LUcool)
     
-    idx = (/1, 1, 1, 1, 2/)
-    PMvalue = 35.2
-    call SetPMvalue(perf_data, idx, PMvalue)
-    idx = (/1, 1, 1, 1, 1/)
-    PMvalue = 56.1
-    call SetPMvalue(perf_data, idx, PMvalue)
-    idx = (/1, 1, 1, 1, 2/)
-    PMvalue = GetPMvalue(perf_data, idx)
+    ! make a check ?
     
     end subroutine ReadPermap
     
