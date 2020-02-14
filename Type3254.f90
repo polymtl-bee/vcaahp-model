@@ -118,7 +118,7 @@ integer :: nx, ny, nval    ! interpolation parameters
 dimension :: x(5), y(3), nval(5)
 integer :: thisUnit, thisType    ! unit and type numbers
 integer, parameter :: N = 5   ! Number of interpolation variables
-integer :: extents(N)  ! Number of values for each interpolation variable
+integer :: extents(N)   ! Number of values for each interpolation variable
 
 ! Local variables
 !real(wp) :: psyDat(9), TwbIn, hIn, hx, hOut
@@ -127,18 +127,27 @@ integer, parameter :: NumOfInstances = 1
 integer :: thisInstanceNo = 1   ! temporary, should use a kernel function to get the actual unit number.
 real(wp) :: filler(N), PMvalue
 
-! Interpolation variables
+! Performance map reading variables
 character (len=maxPathLength) :: permapPath
 character (len=maxMessageLength) :: msg
 logical :: permapFileFound = .false.
 integer :: nTr, nRHr, nTo, nmfr, nfreq   ! number of entries for each variable
 integer :: i, j, line_count = 1, prev_line
 real(wp), allocatable, dimension(:) :: TrValues,  RHrValues, ToValues, mfrValues, freqValues
-integer, allocatable :: entries(:, :)
+real(wp), allocatable :: entries(:, :)
 real(wp), allocatable :: PelMap(:, :, :, :, :)   ! N dimensions
 real(wp), allocatable :: QcsMap(:, :, :, :, :)
 real(wp), allocatable :: QclMap(:, :, :, :, :)
 integer :: idx(N) = 1
+
+!interpolation variables
+real(wp) :: hypercube(2**N, 3), lbvalue, ubvalue
+integer :: lb_idx(N)
+real(wp) :: point(N) = (/22.5, 0.4, 24.0, 0.7, 0.2/), scaled_point(N), sp
+integer :: counter_int(N), ones(N) = 1, zeros(N) = 0
+logical :: counter_bool(N) = .false.
+counter_int = merge(ones, zeros, counter_bool)
+
 
 ! Set the version number for this Type
 if (GetIsVersionSigningTime()) then
@@ -165,6 +174,40 @@ entries = storedData(thisInstanceNo)%entries
 PelMap = storedData(thisInstanceNo)%PelMap
 QcsMap = storedData(thisInstanceNo)%QcsMap
 QclMap = storedData(thisInstanceNo)%QclMap
+
+do i = 1, N
+    j = findlb(entries(i, :), point(i), extents(i))
+    lb_idx(i) = j
+    lbvalue = entries(i, j)
+    ubvalue = entries(i, j+1)
+    scaled_point(i) = (point(i) - lbvalue) / (ubvalue - lbvalue)
+end do
+
+Pel = GetPMvalue(PelMap, lb_idx)
+Qcs = GetPMvalue(QcsMap, lb_idx)
+Qcl = GetPMvalue(QclMap, lb_idx)
+hypercube(1, :) = (/Pel, Qcs, Qcl/)
+counter_bool = .false.
+do i = 2, 2**N
+    call increment(counter_bool)
+    counter_int = merge(ones, zeros, counter_bool)
+    idx = lb_idx + counter_int
+    Pel = GetPMvalue(PelMap, idx)
+    Qcs = GetPMvalue(QcsMap, idx)
+    Qcl = GetPMvalue(QclMap, idx)
+    hypercube(i, :) = (/Pel, Qcs, Qcl/)
+end do
+
+do i = 1, N
+    sp = scaled_point(i)
+    j = N - i
+    hypercube(:2**j, :) = (1-sp) * hypercube(:2**j, :) + sp * hypercube(2**j+1:2**(j+1), :)
+end do
+
+Pel = hypercube(1, 1)
+Qcs = hypercube(1, 2)
+Qcl = hypercube(1, 3)
+continue
 
 !! Inlet air state
 !psyDat(1) = pIn
@@ -313,20 +356,18 @@ return
     allocate(PelMap(nTr, nRHr, nTo, nmfr, nfreq))
     allocate(QcsMap(nTr, nRHr, nTo, nmfr, nfreq))
     allocate(QclMap(nTr, nRHr, nTo, nmfr, nfreq))
-    extents = shape(PelMap)
-    allocate(entries(N, maxval(extents)))
-    
+    extents = shape(PelMap)    
     read(LUcool, *) (filler(i), i = 1, N), Pel, Qcs, Qcl
     call SetPMvalue(PelMap, idx, Pel)
     call SetPMvalue(QcsMap, idx, Qcs)
     call SetPMvalue(QclMap, idx, Qcl)
     do while (sum(idx) < sum(extents))
         prev_line = line_count
-        i = 1
+        i = N
         do while (prev_line == line_count)
             if (idx(i) == extents(i)) then
-                i = i + 1
-                if (i > 1) idx(i-1) = 1
+                i = i - 1
+                if (i < N) idx(i+1) = 1
             else
                 idx(i) = idx(i) + 1
                 line_count = line_count + 1
@@ -341,7 +382,12 @@ return
     close(LUcool)
     
     ! make a check ?
-    
+    allocate(entries(N, maxval(extents)))
+    entries(1, 1:nTr) = TrValues
+    entries(2, 1:nRHr) = RHrValues
+    entries(3, 1:nTo) = ToValues
+    entries(4, 1:nmfr) = mfrValues
+    entries(5, 1:nfreq) = freqValues
     storedData(thisInstanceNo)%nTr = nTr
     storedData(thisInstanceNo)%nRHr = nRHr
     storedData(thisInstanceNo)%nTo = nTo
@@ -389,6 +435,53 @@ return
         end do
         array(array_idx) = value
     end subroutine SetPMvalue
+    
+    
+    function findlb(array, value, extent)
+        real(wp), intent(in) :: array(:)
+        real(wp), intent(in) :: value
+        integer, intent(in) :: extent
+        integer :: findlb
+        integer :: L, R, mid
+        L = 1
+        R = extent
+        do while (L < R)
+            mid = (L + R) / 2  ! L & R are integers -> automatic floor
+            if (array(mid) < value) then
+                L = mid + 1
+            else
+                R = mid
+            end if
+        end do
+        findlb = L - 1
+        if (findlb==0) findlb = 1
+    end function findlb
+    
+    
+    function full_adder(a, b, carry_in)
+        implicit none
+        logical, intent(in) :: a, b, carry_in
+        logical :: sum, carry_out, full_adder(2)
+        sum = a .neqv. b .neqv. carry_in
+        carry_out = a .and. b .or. carry_in .and. (a .neqv. b)
+        full_adder = (/sum, carry_out /)
+    end function full_adder
+
+    subroutine increment(C)
+        implicit none
+        logical, intent(inout) :: C(:)
+        logical :: sumcarry(2)
+        integer :: N, k
+        N = size(C)
+        sumcarry = full_adder(C(N), .true., .false.)
+        C(N) = sumcarry(1)
+        k = N - 1
+        do while (sumcarry(2))
+            sumcarry = full_adder(C(k), .false., sumcarry(2))
+            C(k) = sumcarry(1)
+            k = k-1
+        end do
+    end subroutine increment
     
     
     subroutine ExecuteSpecialCases
