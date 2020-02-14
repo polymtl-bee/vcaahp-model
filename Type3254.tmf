@@ -1,6 +1,6 @@
 #ESI!
 4.0
-Variable capacity heat pump
+Variable capacity air-air heat pump
 0
 
 
@@ -43,7 +43,7 @@ __
 __
 __
 __
-42
+33
 Inlet air temperature
 SN
 1
@@ -149,24 +149,6 @@ real
 0
 C
 Temperature
-Control mode
-SN
-4
-This parameter indicates whether an external controller is used to maintain the temperature or not:
-1 = internal embedded controller,
-2 = external controller (user defined).
-An external controller must provide the compressor frequency (input 7), while the internal controller requires the temperature setpoint (input 8) and the temperature measurment (input 9).
-simple
-integer
-3
-+
-1
-2
-[ ; ]
-1
-0
--
-Dimensionless
 Humidity mode
 SN
 3
@@ -181,81 +163,6 @@ integer
 2
 [ ; ]
 1
-0
--
-Dimensionless
-Logical Unit - cooling mode
-SN
-1
-The logical unit which will be ASSIGNed to the data file which contains the heat pump cooling performance data.  Logical units must be unique integers greater than 10 in any TRNSYS input file.
-simple
-integer
-3
-+
-10
-+Inf
-[ ; ]
-30
-0
--
-Dimensionless
-Number of indoor dry-bulb temperatures
-SN
-1
-The number of indoor inlet dry-bulb temperatures for which data is provided in the cooling performance data file.
-simple
-integer
-3
-+
-2
-+Inf
-[ ; ]
-4
-0
--
-Dimensionless
-Number of indoor wet-bulb temperatures
-SN
-1
-The number of indoor inlet wet-bulb temperatures for which data is provided in the cooling performance data file.
-simple
-integer
-3
-+
-2
-+Inf
-[ ; ]
-3
-0
--
-Dimensionless
-Number of air flow rates
-SN
-1
-The number of normalized air flow rates for which heating AND cooling performance data is supplied in the associated data file.
-simple
-integer
-3
-+
-2
-+Inf
-[ ; ]
-3
-0
--
-Dimensionless
-Number of outdoor dry-bulb temperatures
-SN
-1
-The number of outdoor inlet dry-bulb temperatures for which data is provided in the cooling performance data file.
-simple
-integer
-3
-+
-2
-+Inf
-[ ; ]
-5
 0
 -
 Dimensionless
@@ -274,21 +181,6 @@ real
 0
 1/S
 Frequency
-Indoor air temperature setpoint
-SN
-1
-The setpoint of the indoor room temperature, to be provided if no external controller is used.
-simple
-real
-1
-+
--Inf
-+Inf
-[ ; ]
-0
-0
-C
-Temperature
 Outlet air humidity ratio
 SN
 1
@@ -529,36 +421,6 @@ real
 0
 kg/hr
 Flow Rate
-Compressor frequency
-SN
-1
-The frequency of the compressor.
-simple
-real
-2
-+
-0.0
-+Inf
-[ ; ]
-0
-0
-1/S
-Frequency
-Number of frequencies
-SN
-1
-The number of normalized frequencies for which data is provided in the cooling performance data file.
-simple
-real
-3
-+
-2
-+Inf
-[ ; ]
-4
-0
--
-Dimensionless
 Rated cooling capacity
 SN
 1
@@ -634,21 +496,6 @@ real
 0
 1/S
 Frequency
-Indoor air temperature measurment
-SN
-1
-The measured indoor room temperature, to be provided if no external controller is used.
-simple
-real
-1
-+
--Inf
-+Inf
-[ ; ]
-0
-0
-C
-Temperature
 Indoor fan power
 SN
 1
@@ -679,6 +526,21 @@ real
 0
 kJ/hr
 Power
+Logical Unit - cooling mode
+SN
+1
+The logical unit which will be ASSIGNed to the data file which contains the heat pump cooling performance data.  Logical units must be unique integers greater than 10 in any TRNSYS input file.
+simple
+integer
+3
++
+10
++Inf
+[ ; ]
+30
+0
+-
+Dimensionless
 0
 0
 0
@@ -729,9 +591,9 @@ Power
 9
 
 Which file contains the heat pump cooling performance data?
-C:\Users\Gregor\Documents\Polytechnique Montréal\Canmet\Performance Results/values.txt
+\\Mac\Home\Documents\Canmet\hp-models\interpolation\permap.txt
 1
-C:\Users\Gregor\Documents\Polytechnique Montréal\Canmet\Performance Results/values.txt
+\\Mac\Home\Documents\Canmet\hp-models\interpolation\permap.txt
 Logical Unit - cooling mode
 
 1
@@ -793,21 +655,21 @@ Logical Unit - cooling mode
 0
 0
 0
-10
+8
 0
 
 
 1
 100
 0
-17
+16
 0
 
 
 1
 100
 0
-12
+6
 0
 
 
