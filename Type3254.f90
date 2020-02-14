@@ -109,8 +109,8 @@ real(wp) :: COP, EER, Tc, cmfr  ! Outputs (misc)
 
 
 ! Local variables
-real(wp) :: psyDat(9), TwbIn, hIn, hx, hOut
-integer :: psychMode, status
+real(wp) :: psydat(9), Twbr, hr, hx, hs
+integer :: psymode, status
 integer, parameter :: NumOfInstances = 1
 integer :: thisInstanceNo = 1  ! temporary, should use a kernel function to get the actual unit number.
 
@@ -133,7 +133,8 @@ real(wp) :: filler(N)
 ! Interpolation variables
 real(wp) :: hypercube(2**N, 3), lbvalue, ubvalue
 integer :: lb_idx(N)
-real(wp) :: point(N) = (/22.5, 0.4, 24.0, 0.7, 0.2/), scaled_point(N), sp
+!real(wp) :: point(N) = (/22.5, 0.4, 24.0, 0.7, 0.2/), scaled_point(N), sp
+real(wp) :: point(N), scaled_point(N), sp
 integer :: counter_int(N), ones(N) = 1, zeros(N) = 0
 logical :: counter_bool(N) = .false.
 counter_int = merge(ones, zeros, counter_bool)
@@ -145,12 +146,18 @@ if (GetIsVersionSigningTime()) then
 endif
 
 call GetTRNSYSvariables()
+!thisInstanceNo = thisUnit
 call ExecuteSpecialCases()
 call GetInputValues()
 if (ErrorFound()) return
 
 call RecallStoredValues()
 
+point(1) = Tr
+point(2) = RHr / 100_wp
+point(3) = Toa
+point(4) = amfr / amfrRated
+point(5) = freq / freqRated
 do i = 1, N
     j = findlb(entries(i, :), point(i), extents(i))
     lb_idx(i) = j
@@ -180,103 +187,83 @@ do i = 1, N
     hypercube(:2**j, :) = (1-sp) * hypercube(:2**j, :) + sp * hypercube(2**j+1:2**(j+1), :)
 end do
 
-Pel = hypercube(1, 1)
-Qcs = hypercube(1, 2)
-Qcl = hypercube(1, 3)
-continue
+Pel = hypercube(1, 1) * PelRated
+Qcs = hypercube(1, 2) * QcsRated
+Qcl = hypercube(1, 3) * QclRated
+Qc = Qcs + Qcl
 
-!! Inlet air state
-!psyDat(1) = pIn
-!psyDat(2) = Tin
-!psyDat(4) = RHin/100.0_wp
-!psyDat(6) = wIn
-!if (yHum == 1) then
-!    psychMode = 4
-!else
-!    psychMode = 2
-!endif
-!call MoistAirProperties(thisUnit, thisType, 1, psychMode, 0, psyDat, 1, status) ! unit, type, si units used, psych inputs, Twb not computed, inputs, warnings mgmt, warning occurrences 
-!pIn = psyDat(1)
-!Tin = psyDat(2)
-!TwbIn = psydat(3)
-!RHin = psyDat(4)    ! RHin between 0 and 1 (not 0 and 100)
-!wIn = psyDat(6)
-!hIn = psyDat(7)
-!
-!! Find cooling performance from data file
-!nx = 5
-!nval(5) = nDBin
-!nval(4) = nDBoa
-!nval(3) = nWBin
-!nval(2) = nf
-!nval(1) = nFlowRates
-!x(1) = mDotIn/mDotInRated
-!x(2) = f/fRated
-!x(3) = TwbIn
-!x(4) = Toa
-!x(5) = Tin
-!ny = 3
-!call InterpolateData(LUcool,nx,nval,ny,x,y)
-!if (ErrorFound()) return
-!
-!Qc = QcRated * y(1)
-!Qcs = QcsRated * y(2)
-!Ptot = PtotRated * y(3)
-!
-!! Outlet air state
-!mDotOut = mDotIn    ! Dry air mass conservation
-!pOut = pIn    ! Fan pressure drop neglected
-!
-!! Moist air state
-!if (Qc < Qcs) then
-!    Qc = Qcs
-!    ! Add warning
-!endif
-!
-!if (mDotOut /= 0) then
-!    hOut = hIn - Qc/mDotOut
-!    wOut = wIn    ! useful when the following if clause is not true
-!    hx = hIn      ! same
-!    if (Qc > Qcs) then    ! nonzero latent heat
-!        psyDat(1) = pIn
-!        psyDat(2) = Tin
-!        hx = hIn - (Qc - Qcs)/mDotIn
-!        psyDat(7) = hx    ! enthalpy of the state (Tin, wOut)
-!        call MoistAirProperties(thisUnit, thisType, 1, 5, 0, psyDat, 1, status)    ! dry-bulb and enthalpy as inputs
-!        if (ErrorFound()) return
-!        wOut = psyDat(6)
-!    endif
-!else
-!    hOut = hIn
-!    wOut = wIn
-!    hx = hIn
-!endif
-!
-!psyDat(1) = pOut
-!psyDat(6) = wOut
-!psyDat(7) = hOut
-!call MoistAirProperties(thisUnit, thisType, 1, 7, 0, psyDat, 1, status)    ! humidity ratio and enthalpy as inputs
-!if (ErrorFound()) return
-!pOut = psyDat(1)
-!Tout = psydat(2)
-!RHout = psydat(4)
-!wOut = psydat(6)
-!hOut = psydat(7)
-!
-!! Re-calculate heat transfer whose value is modified if saturation occurs
-!Qc = mDotOut * (hIn - hOut)    ! Total cooling rate
-!Qcs = mDotOut * (hx - hOut)    ! Sensible cooling rate
-!Qcl = Qc - Qcs    ! Latent cooling rate
-!Qrej = Qc + Ptot    ! Heat rejection
-!Pcomp = Ptot - PfanI - PfanO    ! Compressor power
-!if (Ptot /= 0.) then
-!    COP = Qc/Ptot
-!else
-!    COP = 0.0_wp
-!endif
-!EER = 3.413_wp * COP
-!Tcond = Tout
-!mDotCond = mDotOut * (wIn - wOut)    ! Condensate flow rate - water balance
+! Return air state
+psydat(1) = pr
+psydat(2) = Tr
+psydat(4) = RHr/100.0_wp
+psydat(6) = wr
+if (yHum == 1) then
+    psymode = 4
+else
+    psymode = 2
+endif
+call MoistAirProperties(thisUnit, thisType, 1, psymode, 0, psydat, 1, status)
+! (unit, type, si units used, psych inputs, Twb not computed, inputs, warning mgmt, warning occurences)
+pr = psydat(1)
+Tr = psydat(2)
+Twbr = psydat(3)
+RHr = psydat(4)  ! RHr between 0 and 1 (not 0 and 100)
+wr = psydat(6)
+hr = psydat(7)
+
+! Supply air state
+ps = pr  ! Fan pressure drop neglected
+
+! Moist air state
+if (Qc < Qcs) then
+    Qc = Qcs
+    ! Add warning
+endif
+
+if (amfr /= 0) then
+    hs = hr - Qc/amfr
+    ws = wr  ! useful when the following if clause is not true
+    hx = hr  ! same
+    if (Qc > Qcs) then  ! nonzero latent heat
+        psydat(1) = pr
+        psydat(2) = Tr
+        hx = hr - Qcl/amfr
+        psydat(7) = hx  ! enthalpy of the state (Tr, ws)
+        call MoistAirProperties(thisUnit, thisType, 1, 5, 0, psydat, 1, status)  ! dry-bulb and enthalpy as inputs
+        if (ErrorFound()) return
+        ws = psydat(6)
+    endif
+else
+    hs = hr
+    ws = wr
+    hx = hr
+endif
+
+psydat(1) = ps
+psydat(6) = ws
+psydat(7) = hs
+call MoistAirProperties(thisUnit, thisType, 1, 7, 0, psydat, 1, status)  ! humidity ratio and enthalpy as inputs
+if (ErrorFound()) return
+ps = psydat(1)
+Ts = psydat(2)
+RHs = psydat(4)
+ws = psydat(6)
+hs = psydat(7)
+
+! Re-calculate heat transfer whose value is modified if saturation occurs
+Qcs = amfr * (hx - hs)  ! Sensible cooling rate
+Qcl = amfr * (hr - hx)  ! Latent cooling rate
+Qc = Qcs + Qcl  ! Total cooling rate
+Qrej = Qc + Pel  ! Heat rejection
+Pcomp = Pel - PfanI - PfanO  ! Compressor power
+if (Pel /= 0.) then
+    COP = Qc / Pel
+else
+    COP = 0.0_wp
+endif
+EER = 3.413_wp * COP
+Tc = Ts
+cmfr = amfr * (wr - ws)  ! Condensate flow rate - water balance
 
 call SetOutputValues()
 
