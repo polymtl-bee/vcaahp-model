@@ -117,7 +117,7 @@ integer, parameter :: N = 5  ! Number of interpolation variables
 character (len=maxPathLength) :: permapPath
 character (len=maxMessageLength) :: msg
 logical :: permapFileFound = .false.
-integer :: nTr, nTwbr, nTo, namfr, nfreq  ! number of entries for each variable
+integer :: nTr, nTwbr, nToa, namfr, nfreq  ! number of entries for each variable
 integer :: i, j, line_count = 1, prev_line
 real(wp), allocatable, dimension(:) :: TrValues,  TwbrValues, ToValues, amfrValues, freqValues
 integer :: idx(N)
@@ -279,41 +279,30 @@ return
     
     open(LUcool, file=permapPath, status='old')
     
-        do i = 1, 7  ! Skip 7 lines
+        do i = 1, 6  ! Skip 6 first lines
             read(LUcool, *)
         enddo
-    read(LUcool, *) nTr  ! Read number of Tr values
-        read(LUcool, *)  ! Skip line
-    allocate(TrValues(nTr))  ! Read Tr values
-    read(LUcool, *) (TrValues(i), i = 1, nTr)
-        read(LUcool, *)  ! Skip line
-    read(LUcool, *) nTwbr
-        read(LUcool, *)
-    allocate(TwbrValues(nTwbr))
-    read(LUcool, *) (TwbrValues(i), i = 1, nTwbr)
-        read(LUcool, *)
-    read(LUcool, *) nTo
-        read(LUcool, *)
-    allocate(ToValues(nTo))
-    read(LUcool, *) (ToValues(i), i = 1, nTo)
-        read(LUcool, *)
-    read(LUcool, *) namfr
-        read(LUcool, *)
-    allocate(amfrValues(namfr))
-    read(LUcool, *) (amfrValues(i), i = 1, namfr)
-        read(LUcool, *)
-    read(LUcool, *) nfreq
-        read(LUcool, *)
-    allocate(freqValues(nfreq))
-    read(LUcool, *) (freqValues(i), i = 1, nfreq)
-        do i = 1, 4  ! Skip 4 lines
-            read(LUcool, *)
-        end do
-    allocate(s(Ni)%PelMap(nTr, nTwbr, nTo, namfr, nfreq))
-    allocate(s(Ni)%QcsMap(nTr, nTwbr, nTo, namfr, nfreq))
-    allocate(s(Ni)%QclMap(nTr, nTwbr, nTo, namfr, nfreq))
     allocate(s(Ni)%extents(N))
-    s(Ni)%extents = shape(s(Ni)%PelMap)
+    do i = 1, N
+        read(LUcool, *)  ! Skip a line
+        read(LUcool, *) s(Ni)%extents(i)
+    end do
+    allocate(s(Ni)%entries(N, maxval(s(Ni)%extents)))
+    do i = 1, N
+        read(LUcool, *)  ! Skip a line
+        read(LUcool, *) (s(Ni)%entries(i, j), j = 1, s(Ni)%extents(i))
+    end do
+    do i = 1, 4  ! Skip 4 lines
+            read(LUcool, *)
+    end do
+    nTr = s(Ni)%extents(1)
+    nTwbr = s(Ni)%extents(2)
+    nToa = s(Ni)%extents(3)
+    namfr = s(Ni)%extents(4)
+    nfreq = s(Ni)%extents(5)
+    allocate(s(Ni)%PelMap(nTr, nTwbr, nToa, namfr, nfreq))
+    allocate(s(Ni)%QcsMap(nTr, nTwbr, nToa, namfr, nfreq))
+    allocate(s(Ni)%QclMap(nTr, nTwbr, nToa, namfr, nfreq))
     read(LUcool, *) (filler(i), i = 1, N), Pel, Qcs, Qcl
     call SetPMvalue(s(Ni)%PelMap, idx, Pel)
     call SetPMvalue(s(Ni)%QcsMap, idx, Qcs)
@@ -338,13 +327,6 @@ return
     
     close(LUcool)
     ! make a check ?
-    
-    allocate(s(Ni)%entries(N, maxval(s(Ni)%extents)))
-    s(Ni)%entries(1, 1:nTr) = TrValues
-    s(Ni)%entries(2, 1:nTwbr) = TwbrValues
-    s(Ni)%entries(3, 1:nTo) = ToValues
-    s(Ni)%entries(4, 1:namfr) = amfrValues
-    s(Ni)%entries(5, 1:nfreq) = freqValues
     
     end subroutine ReadPermap
     
