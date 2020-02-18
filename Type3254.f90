@@ -114,6 +114,7 @@ integer :: Ni = 1  ! temporary, should use a kernel function to get the actual i
 
 ! Performance map reading variables
 integer, parameter :: N = 5  ! Number of interpolation variables
+integer :: PMlength  ! Length of the flattened performance map
 character (len=maxPathLength) :: permapPath
 character (len=maxMessageLength) :: msg
 logical :: permapFileFound = .false.
@@ -265,7 +266,6 @@ return
     
     subroutine ReadPermap
     
-    idx = 1
     !Ni = GetCurrentUnit()
     
     permapPath = GetLUfileName(LUcool)
@@ -287,13 +287,11 @@ return
         read(LUcool, *)  ! Skip a line
         read(LUcool, *) s(Ni)%extents(i)
     end do
+    PMlength = product(s(Ni)%extents)
     allocate(s(Ni)%entries(N, maxval(s(Ni)%extents)))
     do i = 1, N
         read(LUcool, *)  ! Skip a line
         read(LUcool, *) (s(Ni)%entries(i, j), j = 1, s(Ni)%extents(i))
-    end do
-    do i = 1, 4  ! Skip 4 lines
-            read(LUcool, *)
     end do
     nTr = s(Ni)%extents(1)
     nTwbr = s(Ni)%extents(2)
@@ -303,26 +301,14 @@ return
     allocate(s(Ni)%PelMap(nTr, nTwbr, nToa, namfr, nfreq))
     allocate(s(Ni)%QcsMap(nTr, nTwbr, nToa, namfr, nfreq))
     allocate(s(Ni)%QclMap(nTr, nTwbr, nToa, namfr, nfreq))
-    read(LUcool, *) (filler(i), i = 1, N), Pel, Qcs, Qcl
-    call SetPMvalue(s(Ni)%PelMap, idx, Pel)
-    call SetPMvalue(s(Ni)%QcsMap, idx, Qcs)
-    call SetPMvalue(s(Ni)%QclMap, idx, Qcl)
-    do while (sum(idx) < sum(s(Ni)%extents))
-        prev_line = line_count
-        i = N
-        do while (prev_line == line_count)
-            if (idx(i) == s(Ni)%extents(i)) then
-                i = i - 1
-                if (i < N) idx(i+1) = 1
-            else
-                idx(i) = idx(i) + 1
-                line_count = line_count + 1
-                read(LUcool, *) (filler(j), j = 1, N), Pel, Qcs, Qcl
-                call SetPMvalue(s(Ni)%PelMap, idx, Pel)
-                call SetPMvalue(s(Ni)%QcsMap, idx, Qcs)
-                call SetPMvalue(s(Ni)%QclMap, idx, Qcl)
-            end if
+        do i = 1, 4  ! Skip 4 lines
+            read(LUcool, *)
         end do
+    do i = 1, PMlength
+        read(LUcool, *) (filler(j), j = 1, N), Pel, Qcs, Qcl
+        call SetPMvalue(s(Ni)%PelMap, i, Pel)
+        call SetPMvalue(s(Ni)%QcsMap, i, Qcs)
+        call SetPMvalue(s(Ni)%QclMap, i, Qcl)
     end do
     
     close(LUcool)
@@ -334,26 +320,21 @@ return
     function GetPMvalue(array, idx)
         integer, intent(in) :: idx(:)
         integer :: i, array_idx
-        real(wp) :: array(product(s(Ni)%extents))
+        real(wp) :: array(PMlength)
         real(wp) :: GetPMvalue
-        array_idx = idx(1)
-        do i = 2, size(idx)
-            array_idx = array_idx + product(s(Ni)%extents(:i-1)) * (idx(i) - 1)
+        array_idx = idx(N)
+        do i = N-1, 1, -1
+            array_idx = array_idx + product(s(Ni)%extents(i+1:)) * (idx(i) - 1)
         end do
         GetPMvalue = array(array_idx)
     end function GetPMvalue
     
     
     subroutine SetPMvalue(array, idx, value)
-        real(wp) :: array(product(s(Ni)%extents))
+        real(wp) :: array(PMlength)
         real(wp), intent(in) :: value
-        integer, intent(in) :: idx(:)
-        integer :: i, array_idx
-        array_idx = idx(1)
-        do i = 2, size(idx)
-            array_idx = array_idx + product(s(Ni)%extents(:i-1)) * (idx(i) - 1)
-        end do
-        array(array_idx) = value
+        integer, intent(in) :: idx
+        array(idx) = value
     end subroutine SetPMvalue
     
     
