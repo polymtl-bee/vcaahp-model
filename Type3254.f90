@@ -67,7 +67,6 @@ implicit none
 type Type3254DataStruct
     
     ! Parameters
-    real(wp) :: QcRated, QcsRated, PtotRated, mDotInRated, fRated  ! rated values
     real(wp), allocatable :: entries(:, :)
     integer, allocatable :: extents(:)
 
@@ -118,9 +117,9 @@ integer, parameter :: N = 5  ! Number of interpolation variables
 character (len=maxPathLength) :: permapPath
 character (len=maxMessageLength) :: msg
 logical :: permapFileFound = .false.
-integer :: nTr, nRHr, nTo, namfr, nfreq  ! number of entries for each variable
+integer :: nTr, nTwbr, nTo, namfr, nfreq  ! number of entries for each variable
 integer :: i, j, line_count = 1, prev_line
-real(wp), allocatable, dimension(:) :: TrValues,  RHrValues, ToValues, amfrValues, freqValues
+real(wp), allocatable, dimension(:) :: TrValues,  TwbrValues, ToValues, amfrValues, freqValues
 integer :: idx(N)
 real(wp) :: filler(N)
 
@@ -144,8 +143,28 @@ call ExecuteSpecialCases()
 call GetInputValues()
 if (ErrorFound()) return
 
+! Return air state
+psydat(1) = pr
+psydat(2) = Tr
+psydat(4) = RHr/100.0_wp
+psydat(6) = wr
+if (yHum == 1) then
+    psymode = 4
+else
+    psymode = 2
+endif
+call MoistAirProperties(thisUnit, thisType, 1, psymode, 1, psydat, 1, status)
+! (unit, type, si units used, psych inputs, Twb not computed, inputs, warning mgmt, warning occurences)
+pr = psydat(1)
+Tr = psydat(2)
+Twbr = psydat(3)
+RHr = psydat(4)  ! RHr between 0 and 1 (not 0 and 100)
+wr = psydat(6)
+hr = psydat(7)
+
+! Interpolate using wet bulb
 point(1) = Tr
-point(2) = RHr / 100_wp
+point(2) = Twbr
 point(3) = Toa
 point(4) = amfr / amfrRated
 point(5) = freq / freqRated
@@ -183,25 +202,6 @@ Pel = hypercube(1, 1) * PelRated
 Qcs = hypercube(1, 2) * QcsRated
 Qcl = hypercube(1, 3) * QclRated
 Qc = Qcs + Qcl
-
-! Return air state
-psydat(1) = pr
-psydat(2) = Tr
-psydat(4) = RHr/100.0_wp
-psydat(6) = wr
-if (yHum == 1) then
-    psymode = 4
-else
-    psymode = 2
-endif
-call MoistAirProperties(thisUnit, thisType, 1, psymode, 0, psydat, 1, status)
-! (unit, type, si units used, psych inputs, Twb not computed, inputs, warning mgmt, warning occurences)
-pr = psydat(1)
-Tr = psydat(2)
-Twbr = psydat(3)
-RHr = psydat(4)  ! RHr between 0 and 1 (not 0 and 100)
-wr = psydat(6)
-hr = psydat(7)
 
 ! Supply air state
 ps = pr  ! Fan pressure drop neglected
@@ -287,10 +287,10 @@ return
     allocate(TrValues(nTr))  ! Read Tr values
     read(LUcool, *) (TrValues(i), i = 1, nTr)
         read(LUcool, *)  ! Skip line
-    read(LUcool, *) nRHr
+    read(LUcool, *) nTwbr
         read(LUcool, *)
-    allocate(RHrValues(nRHr))
-    read(LUcool, *) (RHrValues(i), i = 1, nRHr)
+    allocate(TwbrValues(nTwbr))
+    read(LUcool, *) (TwbrValues(i), i = 1, nTwbr)
         read(LUcool, *)
     read(LUcool, *) nTo
         read(LUcool, *)
@@ -309,9 +309,9 @@ return
         do i = 1, 4  ! Skip 4 lines
             read(LUcool, *)
         end do
-    allocate(s(Ni)%PelMap(nTr, nRHr, nTo, namfr, nfreq))
-    allocate(s(Ni)%QcsMap(nTr, nRHr, nTo, namfr, nfreq))
-    allocate(s(Ni)%QclMap(nTr, nRHr, nTo, namfr, nfreq))
+    allocate(s(Ni)%PelMap(nTr, nTwbr, nTo, namfr, nfreq))
+    allocate(s(Ni)%QcsMap(nTr, nTwbr, nTo, namfr, nfreq))
+    allocate(s(Ni)%QclMap(nTr, nTwbr, nTo, namfr, nfreq))
     allocate(s(Ni)%extents(N))
     s(Ni)%extents = shape(s(Ni)%PelMap)
     read(LUcool, *) (filler(i), i = 1, N), Pel, Qcs, Qcl
@@ -341,7 +341,7 @@ return
     
     allocate(s(Ni)%entries(N, maxval(s(Ni)%extents)))
     s(Ni)%entries(1, 1:nTr) = TrValues
-    s(Ni)%entries(2, 1:nRHr) = RHrValues
+    s(Ni)%entries(2, 1:nTwbr) = TwbrValues
     s(Ni)%entries(3, 1:nTo) = ToValues
     s(Ni)%entries(4, 1:namfr) = amfrValues
     s(Ni)%entries(5, 1:nfreq) = freqValues
