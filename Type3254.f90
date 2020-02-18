@@ -13,11 +13,13 @@
 !  2 | wr           | Inlet (return) air humidity ratio             | -               | -
 !  3 | RHr          | Inlet (return) air relative humidity          | % (base 100)    | -
 !  4 | amfr         | Inlet (return) air mass flow rate             | kg/h            | kg/h
-!  5 | pIn          | Inlet (return) air pressure                   | atm             | atm
-!  6 | Toa          | Outdoor air temperature                       | °C              | °C
-!  7 | freq         | Compressor frequency                          | 1/s             | 1/s
-!  8 | PfanI        | Indoor fan power                              | kJ/h            | kJ/h
-!  9 | PfanO        | Outdoor fan power                             | kJ/h            | kJ/h
+!  5 | pr           | Inlet (return) air pressure                   | atm             | atm
+!  6 | mode         | 0 = cooling mode                              | °C              | °C
+!                   | 1 = heating mode                              | -               | -
+!  7 | Toa          | Outdoor air temperature                       | °C              | °C
+!  8 | freq         | Compressor frequency                          | 1/s             | 1/s
+!  9 | PfanI        | Indoor fan power                              | kJ/h            | kJ/h
+! 10 | PfanO        | Outdoor fan power                             | kJ/h            | kJ/h
 ! ----------------------------------------------------------------------------------------------------
 
 ! Parameters
@@ -25,13 +27,16 @@
 ! Nb | Variable     | Description                                   | Param. Units    | Internal Units
 ! ----------------------------------------------------------------------------------------------------
 !  1 | yHum         | 1 = Humidity ratio as humidity input          | -               | -
-!    |              | 2 = Relative humidity as humidity input       | -               | -
-!  2 | PelRated     | Rated total cooling power                     | kJ/h            | kJ/h
+!                   | 2 = Relative humidity as humidity input       | -               | -
+!  2 | PelcRated    | Rated total cooling power                     | kJ/h            | kJ/h
 !  3 | QcsRated     | Rated sensible cooling capacity               | kJ/h            | kJ/h
 !  4 | QclRated     | Rated latent cooling capacity                 | kJ/h            | kJ/h
-!  5 | amfrRated    | Rated inlet air mass flow rate                | kg/h            | kg/h
-!  6 | freqRated    | Rated frequency                               | 1/s             | 1/s
-!  7 | LUcool       | Logical Unit - cooling mode                   | -               | -
+!  5 | PelhRated    | Rated total heating power                     | kJ/h            | kJ/h
+!  6 | QhRated      | Rated heating capacity                        | kJ/h            | kJ/h
+!  7 | amfrRated    | Rated inlet air mass flow rate                | kg/h            | kg/h
+!  8 | freqRated    | Rated frequency                               | 1/s             | 1/s
+!  9 | LUcool       | Logical Unit - cooling mode                   | -               | -
+! 10 | LUheat       | Logical Unit - heating mode                   | -               | -
 ! ----------------------------------------------------------------------------------------------------
 
 ! Outputs
@@ -47,14 +52,16 @@
 !  7 | Qcs          | Sensible cooling rate                         | kJ/h            | kJ/h
 !  8 | Qcl          | Latent cooling rate                           | kJ/h            | kJ/h
 !  9 | Qrej         | Heat rejection rate                           | kJ/h            | kJ/h
-! 10 | Pel          | Total power consumption                       | kJ/h            | kJ/h
-! 11 | COP          | Coefficient of performance                    | -               | -
-! 12 | EER          | Energy efficiency rating                      | -               | -
-! 13 | PfanI        | Indoor fan power                              | kJ/h            | kJ/h
-! 14 | PfanO        | Outdoor fan power                             | kJ/h            | kJ/h
-! 15 | Pcomp        | Compressor power                              | kJ/h            | kJ/h
-! 16 | Tc           | Condensate temperature                        | °C              | °C
-! 17 | cmfr         | Condensate mass flow rate                     | kg/h            | kg/h
+! 10 | Qh           | Total heating rate                            | kJ/h            | kJ/h
+! 11 | Qabs         | Heat absorption rate                          | kJ/h            | kJ/h
+! 12 | Pel          | Total power consumption                       | kJ/h            | kJ/h
+! 13 | COP          | Coefficient of performance                    | -               | -
+! 14 | EER          | Energy efficiency rating                      | -               | -
+! 15 | PfanI        | Indoor fan power                              | kJ/h            | kJ/h
+! 16 | PfanO        | Outdoor fan power                             | kJ/h            | kJ/h
+! 17 | Pcomp        | Compressor power                              | kJ/h            | kJ/h
+! 18 | Tc           | Condensate temperature                        | °C              | °C
+! 19 | cmfr         | Condensate mass flow rate                     | kg/h            | kg/h
 ! ----------------------------------------------------------------------------------------------------
 
 module Type3254Data
@@ -99,10 +106,11 @@ real(wp) :: time, timestep  ! TRNSYS time and timestep
 
 ! Proforma variables
 real(wp) :: Tr, wr, RHr, amfr, pr, Toa, freq, PfanI, PfanO  ! Inputs
-integer :: yHum, LUcool  ! Parameters
-real(wp) :: PelRated, QcsRated, QclRated, amfrRated, freqRated  ! Parameters (rated values)
+integer :: yHum, LUcool, LUheat  ! Parameters
+real(wp) :: mode  ! operating mode
+real(wp) :: PelcRated, QcsRated, QclRated, PelhRated, QhRated, amfrRated, freqRated  ! Parameters (rated values)
 real(wp) :: Ts, ws, RHs, ps  ! Outputs (supply conditions)
-real(wp) :: Pel, Qc, Qcs, Qcl, Qrej, Pcomp  ! Outputs (heat and power)
+real(wp) :: Pel, Qc, Qcs, Qcl, Qrej, Qh, Qabs, Pcomp  ! Outputs (heat and power)
 real(wp) :: COP, EER, Tc, cmfr  ! Outputs (misc)
 
 
@@ -199,7 +207,7 @@ do i = 1, N
                             + sp * hypercube(2**j+1:2**(j+1), :)
 end do
 
-Pel = hypercube(1, 1) * PelRated
+Pel = hypercube(1, 1) * PelcRated
 Qcs = hypercube(1, 2) * QcsRated
 Qcl = hypercube(1, 3) * QclRated
 Qc = Qcs + Qcl
@@ -392,10 +400,10 @@ return
     if(getIsFirstCallofSimulation()) then
 
   	    ! Tell the TRNSYS engine how this Type works
-  	    call SetNumberofParameters(7)
-  	    call SetNumberofInputs(9)
+  	    call SetNumberofParameters(10)
+  	    call SetNumberofInputs(10)
   	    call SetNumberofDerivatives(0)
-  	    call SetNumberofOutputs(17)
+  	    call SetNumberofOutputs(19)
   	    call SetIterationMode(1)
   	    call SetNumberStoredVariables(0,0)
   	    call SetNumberofDiscreteControls(0)
@@ -408,35 +416,6 @@ return
         call ReadParameters()
         call ReadPermap()
 
-        ! Set units (optional)
-        call SetInputUnits(1, 'TE1')  ! °C
-        call SetInputUnits(2, 'DM1')  ! -
-        call SetInputUnits(3, 'PC1')  ! %
-        call SetInputUnits(4, 'MF1')  ! kg/h
-        call SetInputUnits(5, 'PR4')  ! atm
-        call SetInputUnits(6, 'TE1')  ! °C
-        ! call SetInputUnits(7,)    No frequency units ?
-        call SetInputUnits(8, 'PW1')  ! kJ/h
-        call SetInputUnits(9, 'PW1')  ! kJ/h
-
-        call SetOutputUnits(1,'TE1')  ! °C
-        call SetOutputUnits(2,'DM1')  ! -
-        call SetOutputUnits(3,'PC1')  ! %
-        call SetOutputUnits(4,'MF1')  ! kg/h
-        call SetOutputUnits(5,'PR4')  ! atm
-        call SetOutputUnits(6,'PW1')  ! kJ/h
-        call SetOutputUnits(7,'PW1')  ! kJ/h
-        call SetOutputUnits(8,'PW1')  ! kJ/h
-        call SetOutputUnits(9,'PW1')  ! kJ/h
-        call SetOutputUnits(10,'PW1')  ! kJ/h
-        call SetOutputUnits(11,'DM1')  ! -
-        call SetOutputUnits(12,'DM1')  ! -
-        call SetOutputUnits(13,'PW1')  ! kJ/h
-        call SetOutputUnits(14,'PW1')  ! kJ/h
-        call SetOutputUnits(15,'PW1')  ! kJ/h
-        call SetOutputUnits(16,'TE1')  ! °C
-        call SetOutputUnits(17,'MF1')  ! kg/h
-
   	    return
 
     endif
@@ -445,16 +424,7 @@ return
     if (getIsStartTime()) then
         
         call ReadParameters()
-
-        Tr = GetInputValue(1)
-        wr = GetInputValue(2)
-        RHr = GetInputValue(3)
-        amfr = GetInputValue(4)
-        pr = GetInputValue(5)
-        Toa = GetInputValue(6)
-        freq = GetInputValue(7)
-        PfanI = GetInputValue(8)
-        PfanO = GetInputValue(9)
+        call GetInputValues()
 
         ! Set outputs to zeros at initial time
 	    call SetOutputValue(1, 0.0_wp)  ! Supply air temperature
@@ -466,14 +436,16 @@ return
 	    call SetOutputValue(7, 0.0_wp)  ! Sensible cooling rate
 	    call SetOutputValue(8, 0.0_wp)  ! Latent cooling rate
 	    call SetOutputValue(9, 0.0_wp)  ! Heat rejection rate
-	    call SetOutputValue(10, 0.0_wp)  ! Total power consumption
-	    call SetOutputValue(11, 0.0_wp)  ! COP
-	    call SetOutputValue(12, 0.0_wp)  ! EER
-	    call SetOutputValue(13, 0.0_wp)  ! Indoor fan power
-	    call SetOutputValue(14, 0.0_wp)  ! Outdoor fan power
-	    call SetOutputValue(15, 0.0_wp)  ! Compressor power
-	    call SetOutputValue(16, 0.0_wp)  ! Condensate temperature
-	    call SetOutputValue(17, 0.0_wp)  ! Condensate flow rate
+        call SetOutputValue(10, 0.0_wp)  ! Total heating rate
+        call SetOutputValue(11, 0.0_wp)  ! Heat absorption rate
+	    call SetOutputValue(12, 0.0_wp)  ! Total power consumption
+	    call SetOutputValue(13, 0.0_wp)  ! COP
+	    call SetOutputValue(14, 0.0_wp)  ! EER
+	    call SetOutputValue(15, 0.0_wp)  ! Indoor fan power
+	    call SetOutputValue(16, 0.0_wp)  ! Outdoor fan power
+	    call SetOutputValue(17, 0.0_wp)  ! Compressor power
+	    call SetOutputValue(18, 0.0_wp)  ! Condensate temperature
+	    call SetOutputValue(19, 0.0_wp)  ! Condensate flow rate
 
         return
 
@@ -495,13 +467,16 @@ return
     
     
     subroutine ReadParameters
-        yHum = getParameterValue(1)
-        PelRated = getParameterValue(2)
-        QcsRated = getParameterValue(3)
-        QclRated = getParameterValue(4)
-        amfrRated = getParameterValue(5)
-        freqRated = getParameterValue(6)
-        LUcool = getParameterValue(7)
+        yHum = GetParameterValue(1)
+        PelcRated = GetParameterValue(2)
+        QcsRated = GetParameterValue(3)
+        QclRated = GetParameterValue(4)
+        PelhRated = GetParameterValue(5)
+        QhRated = GetParameterValue(6)
+        amfrRated = GetParameterValue(7)
+        freqRated = GetParameterValue(8)
+        LUcool = GetParameterValue(9)
+        LUheat = GetParameterValue(10)
     end subroutine ReadParameters
     
     
@@ -511,10 +486,11 @@ return
         RHr = GetInputValue(3)
         amfr = GetInputValue(4)
         pr = GetInputValue(5)
-        Toa = GetInputValue(6)
-        freq = GetInputValue(7)
-        Pfani = GetInputValue(8)
-        Pfano = GetInputValue(9)
+        mode = GetInputValue(6)
+        Toa = GetInputValue(7)
+        freq = GetInputValue(8)
+        PfanI = GetInputValue(9)
+        PfanO = GetInputValue(10)
     end subroutine GetInputValues
     
     
@@ -528,14 +504,16 @@ return
         call SetOutputValue(7, Qcs)  ! Sensible cooling rate
         call SetOutputValue(8, Qcl)  ! Latent cooling rate
         call SetOutputValue(9, Qrej)  ! Heat rejection rate
-        call SetOutputValue(10, Pel)  ! Total power consumption
-        call SetOutputValue(11, COP)  ! COP
-        call SetOutputValue(12, EER)  ! EER
-        call SetOutputValue(13, PfanI)  ! Indoor fan power
-        call SetOutputValue(14, PfanO)  ! Outdoor fan power
-        call SetOutputValue(15, Pcomp)  ! Compressor power
-        call SetOutputValue(16, Tc)  ! Condensate temperature
-        call SetOutputValue(17, cmfr)  ! Condensate flow rate
+        call SetOutputValue(10, Qh)  ! Total heating rate
+        call SetOutputValue(11, Qabs)  ! Heat absorption rate
+        call SetOutputValue(12, Pel)  ! Total power consumption
+        call SetOutputValue(13, COP)  ! COP
+        call SetOutputValue(14, EER)  ! EER
+        call SetOutputValue(15, PfanI)  ! Indoor fan power
+        call SetOutputValue(16, PfanO)  ! Outdoor fan power
+        call SetOutputValue(17, Pcomp)  ! Compressor power
+        call SetOutputValue(18, Tc)  ! Condensate temperature
+        call SetOutputValue(19, cmfr)  ! Condensate flow rate
     end subroutine SetOutputValues
     
     

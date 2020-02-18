@@ -43,8 +43,8 @@ __
 __
 __
 __
-33
-Inlet air temperature
+39
+Return air temperature
 SN
 1
 The dry-bulb temperature of the air entering the indoor unit of the heat pump. This air is typically at room air conditions.
@@ -59,7 +59,7 @@ real
 0
 C
 Temperature
-Inlet air humidity ratio
+Return air humidity ratio
 SN
 1
 The absolute humidity ratio of the air entering the indoor unit of the heat pump. This air is typically at room air conditions.
@@ -74,7 +74,7 @@ real
 0
 -
 Dimensionless
-Inlet air % RH
+Return air % RH
 SN
 1
 The percent relative humidity of the air entering the indoor unit of the heat pump. This air is typically at room air conditions.
@@ -89,7 +89,7 @@ real
 0
 % (base 100)
 Percentage
-Inlet air flow rate
+Return air flow rate
 SN
 1
 The air flow rate entering the indoor unit of the heat pump.
@@ -104,7 +104,7 @@ real
 0
 kg/hr
 Flow Rate
-Inlet air pressure
+Return air pressure
 SN
 1
 The absolute pressure of the air entering the indoor unit of the heat pump. This air is typically at room air conditions.
@@ -119,7 +119,24 @@ real
 0
 atm
 Pressure
-Outside air temperature
+Operating mode
+SN
+3
+Setting for heating/cooling mode :
+0 = cooling mode
+1 = heating mode
+simple
+real
+1
++
+0.0
+1.0
+[ ; ]
+0.0
+0
+-
+Dimensionless
+Outdoor air temperature
 SN
 1
 The temperature of the air entering the outdoor unit of the heat pump. This value is typically the ambient temperature.
@@ -301,6 +318,36 @@ real
 0
 kJ/hr
 Power
+Total heating rate
+SN
+1
+
+simple
+real
+2
++
+-Inf
++Inf
+[ ; ]
+0
+0
+kJ/hr
+Power
+Heat absorption rate
+SN
+1
+
+simple
+real
+2
++
+-Inf
++Inf
+[ ; ]
+0
+0
+kJ/hr
+Power
 Total power consumption
 SN
 1
@@ -421,36 +468,6 @@ real
 0
 kg/hr
 Flow Rate
-Rated cooling capacity
-SN
-1
-The total cooling capacity of the heat pump at its rated conditions. Make sure the data file corresponds to the same rating conditions.
-simple
-real
-3
-+
-0.0
-+Inf
-[ ; ]
-0
-0
-kJ/hr
-Power
-Rated sensible cooling capacity
-SN
-1
-The sensible cooling capacity of the heat pump at its rated conditions. Make sure the data file corresponds to the same rating conditions.
-simple
-real
-3
-+
-0.0
-+Inf
-[ ; ]
-0
-0
-kJ/hr
-Power
 Rated total cooling power
 SN
 1
@@ -462,7 +479,67 @@ real
 0.0
 +Inf
 [ ; ]
+1
 0
+kJ/hr
+Power
+Rated sensible cooling capacity
+SN
+1
+The total cooling capacity of the heat pump at its rated conditions. Make sure the data file corresponds to the same rating conditions.
+simple
+real
+3
++
+0.0
++Inf
+[ ; ]
+1
+0
+kJ/hr
+Power
+Rated latent cooling capacity
+SN
+1
+The sensible cooling capacity of the heat pump at its rated conditions. Make sure the data file corresponds to the same rating conditions.
+simple
+real
+3
++
+0.0
++Inf
+[ ; ]
+1
+0
+kJ/hr
+Power
+Rated total heating power
+SN
+1
+
+simple
+real
+3
++
+0.0
++Inf
+[ ; ]
+1
+0
+kJ/hr
+Power
+Rated heating capacity
+SN
+1
+
+simple
+real
+3
++
+0.0
++Inf
+[ ; ]
+1
 0
 kJ/hr
 Power
@@ -477,7 +554,7 @@ real
 0.0
 +Inf
 [ ; ]
-0
+1
 0
 kg/hr
 Flow Rate
@@ -492,7 +569,7 @@ real
 0.0
 +Inf
 [ ; ]
-0
+1
 0
 1/S
 Frequency
@@ -541,6 +618,21 @@ integer
 0
 -
 Dimensionless
+Logical Unit - heating mode
+SN
+1
+
+simple
+integer
+3
++
+10
++Inf
+[ ; ]
+31
+0
+-
+dimensionless
 0
 0
 0
@@ -591,26 +683,20 @@ Dimensionless
 9
 
 Which file contains the heat pump cooling performance data?
-\\Mac\Home\Documents\Canmet\hp-models\interpolation\permap.txt
+\\Mac\Home\Documents\Canmet\permap-generator\permap-cooling.dat
 1
-\\Mac\Home\Documents\Canmet\hp-models\interpolation\permap.txt
+\\Mac\Home\Documents\Canmet\permap-generator\permap-cooling.dat
 Logical Unit - cooling mode
 
 1
 
+Which file contains the heat pump heating performance data?
+\\Mac\Home\Documents\Canmet\permap-generator\permap-heating.dat
+1
+\\Mac\Home\Documents\Canmet\permap-generator\permap-heating.dat
+Logical Unit - heating mode
 
-
-0
-
-
-0
-
-
-
-0
-
-
-0
+1
 
 
 
@@ -653,23 +739,30 @@ Logical Unit - cooling mode
 
 
 0
+
+
+
+0
+
+
 0
 0
-8
+0
+9
 0
 
 
 1
 100
 0
-16
+18
 0
 
 
 1
 100
 0
-6
+9
 0
 
 
