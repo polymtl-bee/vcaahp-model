@@ -68,9 +68,8 @@ type Type3254DataStruct
     
     ! Parameters
     real(wp) :: QcRated, QcsRated, PtotRated, mDotInRated, fRated  ! rated values
-    integer :: nTr, nRHr, nTo, namfr, nfreq  ! number of entries for each variable
     real(wp), allocatable :: entries(:, :)
-    real(wp), allocatable :: extents(:)
+    integer, allocatable :: extents(:)
 
     ! Performance matrices
     real(wp), allocatable :: PelMap(:, :, :, :, :)
@@ -79,7 +78,7 @@ type Type3254DataStruct
 
 end type Type3254DataStruct
 
-type(Type3254DataStruct), allocatable, save :: storedData(:)
+type(Type3254DataStruct), allocatable, save :: s(:)
 
 end module Type3254Data
 
@@ -111,23 +110,18 @@ real(wp) :: COP, EER, Tc, cmfr  ! Outputs (misc)
 ! Local variables
 real(wp) :: psydat(9), Twbr, hr, hx, hs
 integer :: psymode, status
-integer, parameter :: NumOfInstances = 1
-integer :: thisInstanceNo = 1  ! temporary, should use a kernel function to get the actual unit number.
+integer, parameter :: Ninstances = 1  ! Number of units
+integer :: Ni = 1  ! temporary, should use a kernel function to get the actual instance number.
 
 ! Performance map reading variables
 integer, parameter :: N = 5  ! Number of interpolation variables
-integer :: extents(N)  ! Number of values for each interpolation variable
 character (len=maxPathLength) :: permapPath
 character (len=maxMessageLength) :: msg
 logical :: permapFileFound = .false.
 integer :: nTr, nRHr, nTo, namfr, nfreq  ! number of entries for each variable
 integer :: i, j, line_count = 1, prev_line
 real(wp), allocatable, dimension(:) :: TrValues,  RHrValues, ToValues, amfrValues, freqValues
-real(wp), allocatable :: entries(:, :)
-real(wp), allocatable :: PelMap(:, :, :, :, :)  ! N dimensions
-real(wp), allocatable :: QcsMap(:, :, :, :, :)
-real(wp), allocatable :: QclMap(:, :, :, :, :)
-integer :: idx(N) = 1
+integer :: idx(N)
 real(wp) :: filler(N)
 
 ! Interpolation variables
@@ -142,16 +136,13 @@ counter_int = merge(ones, zeros, counter_bool)
 ! Set the version number for this Type
 if (GetIsVersionSigningTime()) then
     call SetTypeVersion(18)
-    return  ! We are done for this call
+    return
 endif
 
 call GetTRNSYSvariables()
-!thisInstanceNo = thisUnit
 call ExecuteSpecialCases()
 call GetInputValues()
 if (ErrorFound()) return
-
-call RecallStoredValues()
 
 point(1) = Tr
 point(2) = RHr / 100_wp
@@ -159,32 +150,33 @@ point(3) = Toa
 point(4) = amfr / amfrRated
 point(5) = freq / freqRated
 do i = 1, N
-    j = findlb(entries(i, :), point(i), extents(i))
+    j = findlb(s(Ni)%entries(i, :), point(i), s(Ni)%extents(i))
     lb_idx(i) = j
-    lbvalue = entries(i, j)
-    ubvalue = entries(i, j+1)
+    lbvalue = s(Ni)%entries(i, j)
+    ubvalue = s(Ni)%entries(i, j+1)
     scaled_point(i) = (point(i) - lbvalue) / (ubvalue - lbvalue)
 end do
 
-Pel = GetPMvalue(PelMap, lb_idx)
-Qcs = GetPMvalue(QcsMap, lb_idx)
-Qcl = GetPMvalue(QclMap, lb_idx)
+Pel = GetPMvalue(s(Ni)%PelMap, lb_idx)
+Qcs = GetPMvalue(s(Ni)%QcsMap, lb_idx)
+Qcl = GetPMvalue(s(Ni)%QclMap, lb_idx)
 hypercube(1, :) = (/Pel, Qcs, Qcl/)
 counter_bool = .false.
 do i = 2, 2**N
     call increment(counter_bool)
     counter_int = merge(ones, zeros, counter_bool)
     idx = lb_idx + counter_int
-    Pel = GetPMvalue(PelMap, idx)
-    Qcs = GetPMvalue(QcsMap, idx)
-    Qcl = GetPMvalue(QclMap, idx)
+    Pel = GetPMvalue(s(Ni)%PelMap, idx)
+    Qcs = GetPMvalue(s(Ni)%QcsMap, idx)
+    Qcl = GetPMvalue(s(Ni)%QclMap, idx)
     hypercube(i, :) = (/Pel, Qcs, Qcl/)
 end do
 
 do i = 1, N
     sp = scaled_point(i)
     j = N - i
-    hypercube(:2**j, :) = (1-sp) * hypercube(:2**j, :) + sp * hypercube(2**j+1:2**(j+1), :)
+    hypercube(:2**j, :) = (1-sp) * hypercube(:2**j, :) &
+                            + sp * hypercube(2**j+1:2**(j+1), :)
 end do
 
 Pel = hypercube(1, 1) * PelRated
@@ -220,11 +212,11 @@ if (Qc < Qcs) then
     ! Add warning
 endif
 
-if (amfr /= 0) then
+if (amfr /= 0.0_wp) then
     hs = hr - Qc/amfr
     ws = wr  ! useful when the following if clause is not true
     hx = hr  ! same
-    if (Qc > Qcs) then  ! nonzero latent heat
+    if (Qcl > 0.0_wp) then
         psydat(1) = pr
         psydat(2) = Tr
         hx = hr - Qcl/amfr
@@ -273,6 +265,9 @@ return
     
     subroutine ReadPermap
     
+    idx = 1
+    !Ni = GetCurrentUnit()
+    
     permapPath = GetLUfileName(LUcool)
     inquire(file=trim(permapPath), exist=permapFileFound)
     if ( .not. permapFileFound ) then
@@ -314,28 +309,29 @@ return
         do i = 1, 4  ! Skip 4 lines
             read(LUcool, *)
         end do
-    allocate(PelMap(nTr, nRHr, nTo, namfr, nfreq))
-    allocate(QcsMap(nTr, nRHr, nTo, namfr, nfreq))
-    allocate(QclMap(nTr, nRHr, nTo, namfr, nfreq))
-    extents = shape(PelMap)    
+    allocate(s(Ni)%PelMap(nTr, nRHr, nTo, namfr, nfreq))
+    allocate(s(Ni)%QcsMap(nTr, nRHr, nTo, namfr, nfreq))
+    allocate(s(Ni)%QclMap(nTr, nRHr, nTo, namfr, nfreq))
+    allocate(s(Ni)%extents(N))
+    s(Ni)%extents = shape(s(Ni)%PelMap)
     read(LUcool, *) (filler(i), i = 1, N), Pel, Qcs, Qcl
-    call SetPMvalue(PelMap, idx, Pel)
-    call SetPMvalue(QcsMap, idx, Qcs)
-    call SetPMvalue(QclMap, idx, Qcl)
-    do while (sum(idx) < sum(extents))
+    call SetPMvalue(s(Ni)%PelMap, idx, Pel)
+    call SetPMvalue(s(Ni)%QcsMap, idx, Qcs)
+    call SetPMvalue(s(Ni)%QclMap, idx, Qcl)
+    do while (sum(idx) < sum(s(Ni)%extents))
         prev_line = line_count
         i = N
         do while (prev_line == line_count)
-            if (idx(i) == extents(i)) then
+            if (idx(i) == s(Ni)%extents(i)) then
                 i = i - 1
                 if (i < N) idx(i+1) = 1
             else
                 idx(i) = idx(i) + 1
                 line_count = line_count + 1
                 read(LUcool, *) (filler(j), j = 1, N), Pel, Qcs, Qcl
-                call SetPMvalue(PelMap, idx, Pel)
-                call SetPMvalue(QcsMap, idx, Qcs)
-                call SetPMvalue(QclMap, idx, Qcl)
+                call SetPMvalue(s(Ni)%PelMap, idx, Pel)
+                call SetPMvalue(s(Ni)%QcsMap, idx, Qcs)
+                call SetPMvalue(s(Ni)%QclMap, idx, Qcl)
             end if
         end do
     end do
@@ -343,31 +339,12 @@ return
     close(LUcool)
     ! make a check ?
     
-    allocate(entries(N, maxval(extents)))
-    entries(1, 1:nTr) = TrValues
-    entries(2, 1:nRHr) = RHrValues
-    entries(3, 1:nTo) = ToValues
-    entries(4, 1:namfr) = amfrValues
-    entries(5, 1:nfreq) = freqValues
-    storedData(thisInstanceNo)%nTr = nTr
-    storedData(thisInstanceNo)%nRHr = nRHr
-    storedData(thisInstanceNo)%nTo = nTo
-    storedData(thisInstanceNo)%namfr = namfr
-    storedData(thisInstanceNo)%nfreq = nfreq
-    allocate(storedData(NumOfInstances)%extents(N))
-    allocate(storedData(NumOfInstances)%entries(N, maxval(extents)))
-    allocate(storedData(NumOfInstances)%PelMap(nTr, nRHr, nTo, namfr, nfreq))
-    allocate(storedData(NumOfInstances)%QcsMap(nTr, nRHr, nTo, namfr, nfreq))
-    allocate(storedData(NumOfInstances)%QclMap(nTr, nRHr, nTo, namfr, nfreq))
-    storedData(thisInstanceNo)%extents = extents
-    storedData(thisInstanceNo)%entries = entries
-    storedData(thisInstanceNo)%PelMap = PelMap
-    storedData(thisInstanceNo)%QcsMap = QcsMap
-    storedData(thisInstanceNo)%QclMap = QclMap
-    deallocate(entries)
-    deallocate(PelMap)
-    deallocate(QcsMap)
-    deallocate(QclMap)
+    allocate(s(Ni)%entries(N, maxval(s(Ni)%extents)))
+    s(Ni)%entries(1, 1:nTr) = TrValues
+    s(Ni)%entries(2, 1:nRHr) = RHrValues
+    s(Ni)%entries(3, 1:nTo) = ToValues
+    s(Ni)%entries(4, 1:namfr) = amfrValues
+    s(Ni)%entries(5, 1:nfreq) = freqValues
     
     end subroutine ReadPermap
     
@@ -375,24 +352,24 @@ return
     function GetPMvalue(array, idx)
         integer, intent(in) :: idx(:)
         integer :: i, array_idx
-        real(wp) :: array(product(extents))
+        real(wp) :: array(product(s(Ni)%extents))
         real(wp) :: GetPMvalue
         array_idx = idx(1)
         do i = 2, size(idx)
-            array_idx = array_idx + product(extents(:i-1)) * (idx(i) - 1)
+            array_idx = array_idx + product(s(Ni)%extents(:i-1)) * (idx(i) - 1)
         end do
         GetPMvalue = array(array_idx)
     end function GetPMvalue
     
     
     subroutine SetPMvalue(array, idx, value)
-        real(wp) :: array(product(extents))
+        real(wp) :: array(product(s(Ni)%extents))
         real(wp), intent(in) :: value
         integer, intent(in) :: idx(:)
         integer :: i, array_idx
         array_idx = idx(1)
         do i = 2, size(idx)
-            array_idx = array_idx + product(extents(:i-1)) * (idx(i) - 1)
+            array_idx = array_idx + product(s(Ni)%extents(:i-1)) * (idx(i) - 1)
         end do
         array(array_idx) = value
     end subroutine SetPMvalue
@@ -461,8 +438,8 @@ return
   	    call SetNumberofDiscreteControls(0)
         
         ! Allocate stored data structure
-        if (.not. allocated(storedData)) then
-            allocate(storedData(numOfInstances))
+        if (.not. allocated(s)) then
+            allocate(s(Ninstances))
         endif
         
         call ReadParameters()
@@ -548,32 +525,10 @@ return
     endif
     
     if (GetIsLastCallofSimulation()) then
-        deallocate(entries)
-        deallocate(PelMap)
-        deallocate(QcsMap)
-        deallocate(QclMap)
         return  ! We are done for this call
     endif
     
     end subroutine ExecuteSpecialCases
-    
-    
-    subroutine RecallStoredValues
-        nTr = storedData(thisInstanceNo)%nTr
-        nRHr = storedData(thisInstanceNo)%nRHr
-        nTo = storedData(thisInstanceNo)%nTo
-        namfr = storedData(thisInstanceNo)%namfr
-        nfreq = storedData(thisInstanceNo)%nfreq
-        extents = storedData(thisInstanceNo)%extents
-        allocate(entries(N, maxval(extents)))
-        allocate(PelMap(nTr, nRHr, nTo, namfr, nfreq))
-        allocate(QcsMap(nTr, nRHr, nTo, namfr, nfreq))
-        allocate(QclMap(nTr, nRHr, nTo, namfr, nfreq))
-        entries = storedData(thisInstanceNo)%entries
-        PelMap = storedData(thisInstanceNo)%PelMap
-        QcsMap = storedData(thisInstanceNo)%QcsMap
-        QclMap = storedData(thisInstanceNo)%QclMap
-    end subroutine RecallStoredValues
     
     
     subroutine ReadParameters
