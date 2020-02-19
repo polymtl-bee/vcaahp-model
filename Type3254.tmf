@@ -126,13 +126,13 @@ Setting for heating/cooling mode :
 0 = cooling mode
 1 = heating mode
 simple
-real
+integer
 1
 +
-0.0
-1.0
+0
+1
 [ ; ]
-0.0
+0
 0
 -
 Dimensionless

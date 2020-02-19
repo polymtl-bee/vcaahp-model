@@ -74,13 +74,15 @@ implicit none
 type Type3254DataStruct
     
     ! Parameters
-    real(wp), allocatable :: entries(:, :)
-    integer, allocatable :: extents(:)
+    real(wp), allocatable :: entries(:, :, :)
+    integer, allocatable :: extents(:, :)
 
     ! Performance matrices
-    real(wp), allocatable :: PelMap(:, :, :, :, :)
+    real(wp), allocatable :: PelcMap(:, :, :, :, :)
     real(wp), allocatable :: QcsMap(:, :, :, :, :)
     real(wp), allocatable :: QclMap(:, :, :, :, :)
+    real(wp), allocatable :: PelhMap(:, :, :, :, :)
+    real(wp), allocatable :: QhMap(:, :, :, :, :)
 
 end type Type3254DataStruct
 
@@ -106,8 +108,8 @@ real(wp) :: time, timestep  ! TRNSYS time and timestep
 
 ! Proforma variables
 real(wp) :: Tr, wr, RHr, amfr, pr, Toa, freq, PfanI, PfanO  ! Inputs
+integer :: mode  ! operating mode
 integer :: yHum, LUcool, LUheat  ! Parameters
-real(wp) :: mode  ! operating mode
 real(wp) :: PelcRated, QcsRated, QclRated, PelhRated, QhRated, amfrRated, freqRated  ! Parameters (rated values)
 real(wp) :: Ts, ws, RHs, ps  ! Outputs (supply conditions)
 real(wp) :: Pel, Qc, Qcs, Qcl, Qrej, Qh, Qabs, Pcomp  ! Outputs (heat and power)
@@ -121,25 +123,17 @@ integer, parameter :: Ninstances = 1  ! Number of units
 integer :: Ni = 1  ! temporary, should use a kernel function to get the actual instance number.
 
 ! Performance map reading variables
-integer, parameter :: N = 5  ! Number of interpolation variables
-integer :: PMlength  ! Length of the flattened performance map
-character (len=maxPathLength) :: permapPath
-character (len=maxMessageLength) :: msg
-logical :: permapFileFound = .false.
-integer :: nTr, nTwbr, nToa, namfr, nfreq  ! number of entries for each variable
-integer :: i, j, line_count = 1, prev_line
-real(wp), allocatable, dimension(:) :: TrValues,  TwbrValues, ToValues, amfrValues, freqValues
-integer :: idx(N)
-real(wp) :: filler(N)
+integer, parameter :: Nc = 5, Nh = 5  ! Number of interpolation variables
+integer, parameter :: Nmax = max(Nc, Nh)
+integer :: PMClength, PMHlength  ! Length of the flattened performance map
+
+integer :: nTr, nTwbr, nToa, nTwboa, namfr, nfreq  ! number of entries for each variable
+integer :: i, j, N, Nout
+
 
 ! Interpolation variables
-real(wp) :: hypercube(2**N, 3), lbvalue, ubvalue
-integer :: lb_idx(N)
-!real(wp) :: point(N) = (/22.5, 0.4, 24.0, 0.7, 0.2/), scaled_point(N), sp
-real(wp) :: point(N), scaled_point(N), sp
-integer :: counter_int(N), ones(N) = 1, zeros(N) = 0
-logical :: counter_bool(N) = .false.
-counter_int = merge(ones, zeros, counter_bool)
+real(wp) :: point(Nmax, 0:1)
+real(wp), allocatable :: interpolationResults(:)
 
 ! Set the version number for this Type
 if (GetIsVersionSigningTime()) then
@@ -172,45 +166,21 @@ wr = psydat(6)
 hr = psydat(7)
 
 ! Interpolate using wet bulb
-point(1) = Tr
-point(2) = Twbr
-point(3) = Toa
-point(4) = amfr / amfrRated
-point(5) = freq / freqRated
-do i = 1, N
-    j = findlb(s(Ni)%entries(i, :), point(i), s(Ni)%extents(i))
-    lb_idx(i) = j
-    lbvalue = s(Ni)%entries(i, j)
-    ubvalue = s(Ni)%entries(i, j+1)
-    scaled_point(i) = (point(i) - lbvalue) / (ubvalue - lbvalue)
-end do
+point(1, mode) = Tr
+point(2, mode) = Twbr
+point(3, mode) = Toa
+point(4, mode) = amfr / amfrRated
+point(5, mode) = freq / freqRated
+N = (1-mode) * Nc + mode * Nh
 
-Pel = GetPMvalue(s(Ni)%PelMap, lb_idx)
-Qcs = GetPMvalue(s(Ni)%QcsMap, lb_idx)
-Qcl = GetPMvalue(s(Ni)%QclMap, lb_idx)
-hypercube(1, :) = (/Pel, Qcs, Qcl/)
-counter_bool = .false.
-do i = 2, 2**N
-    call increment(counter_bool)
-    counter_int = merge(ones, zeros, counter_bool)
-    idx = lb_idx + counter_int
-    Pel = GetPMvalue(s(Ni)%PelMap, idx)
-    Qcs = GetPMvalue(s(Ni)%QcsMap, idx)
-    Qcl = GetPMvalue(s(Ni)%QclMap, idx)
-    hypercube(i, :) = (/Pel, Qcs, Qcl/)
-end do
-
-do i = 1, N
-    sp = scaled_point(i)
-    j = N - i
-    hypercube(:2**j, :) = (1-sp) * hypercube(:2**j, :) &
-                            + sp * hypercube(2**j+1:2**(j+1), :)
-end do
-
-Pel = hypercube(1, 1) * PelcRated
-Qcs = hypercube(1, 2) * QcsRated
-Qcl = hypercube(1, 3) * QclRated
+Nout = 3*(1-mode) + 2*mode
+allocate(interpolationResults(Nout))
+interpolationResults = interpolate(point(:, mode), mode, Nout)
+Pel = interpolationResults(1) * PelcRated
+Qcs = interpolationResults(2) * QcsRated
+Qcl = interpolationResults(3) * QclRated
 Qc = Qcs + Qcl
+deallocate(interpolationResults)
 
 ! Supply air state
 ps = pr  ! Fan pressure drop neglected
@@ -273,75 +243,167 @@ return
     contains
     
     subroutine ReadPermap
+        character (len=maxPathLength) :: permapCoolPath
+        character (len=maxPathLength) :: permapHeatPath
+        real(wp) :: filler(Nmax)
     
-    !Ni = GetCurrentUnit()
+        !Ni = GetCurrentUnit()
     
-    permapPath = GetLUfileName(LUcool)
-    inquire(file=trim(permapPath), exist=permapFileFound)
-    if ( .not. permapFileFound ) then
-        write(msg,'("""",a,"""")') trim(permapPath)
-        msg = "Could not find the specified performance map file. Searched for: " // trim(msg)
-        call Messages(-1, msg, 'fatal', thisUnit, thisType)
-        return
-    end if
+        permapCoolPath = GetLUfileName(LUcool)
+        permapHeatPath = GetLUfileName(LUheat)
+        call CheckPMfile(permapCoolPath)
+        call CheckPMfile(permapHeatPath)
     
-    open(LUcool, file=permapPath, status='old')
+        open(LUcool, file=permapCoolPath, status='old')
+        open(LUHeat, file=permapHeatPath, status='old')
     
-        do i = 1, 6  ! Skip 6 first lines
-            read(LUcool, *)
-        enddo
-    allocate(s(Ni)%extents(N))
-    do i = 1, N
-        read(LUcool, *)  ! Skip a line
-        read(LUcool, *) s(Ni)%extents(i)
-    end do
-    PMlength = product(s(Ni)%extents)
-    allocate(s(Ni)%entries(N, maxval(s(Ni)%extents)))
-    do i = 1, N
-        read(LUcool, *)  ! Skip a line
-        read(LUcool, *) (s(Ni)%entries(i, j), j = 1, s(Ni)%extents(i))
-    end do
-    nTr = s(Ni)%extents(1)
-    nTwbr = s(Ni)%extents(2)
-    nToa = s(Ni)%extents(3)
-    namfr = s(Ni)%extents(4)
-    nfreq = s(Ni)%extents(5)
-    allocate(s(Ni)%PelMap(nTr, nTwbr, nToa, namfr, nfreq))
-    allocate(s(Ni)%QcsMap(nTr, nTwbr, nToa, namfr, nfreq))
-    allocate(s(Ni)%QclMap(nTr, nTwbr, nToa, namfr, nfreq))
-        do i = 1, 4  ! Skip 4 lines
-            read(LUcool, *)
+            do i = 1, 6  ! Skip 6 first lines
+                read(LUcool, *)
+                read(LUHeat, *)
+            enddo
+        allocate(s(Ni)%extents(Nmax, 0:1))
+        do i = 1, Nc
+            read(LUcool, *)  ! Skip a line
+            read(LUcool, *) s(Ni)%extents(i, 0)
         end do
-    do i = 1, PMlength
-        read(LUcool, *) (filler(j), j = 1, N), Pel, Qcs, Qcl
-        call SetPMvalue(s(Ni)%PelMap, i, Pel)
-        call SetPMvalue(s(Ni)%QcsMap, i, Qcs)
-        call SetPMvalue(s(Ni)%QclMap, i, Qcl)
-    end do
+        do i = 1, Nh
+            read(LUheat, *)  ! Skip a line
+            read(LUheat, *) s(Ni)%extents(i, 1)
+        end do
+        PMClength = product(s(Ni)%extents(:, 0))
+        PMHlength = product(s(Ni)%extents(:, 1))
+        allocate(s(Ni)%entries(maxval(s(Ni)%extents), Nmax, 0:1))
+        do i = 1, Nc
+            read(LUcool, *)  ! Skip a line
+            read(LUcool, *) (s(Ni)%entries(j, i, 0), j = 1, s(Ni)%extents(i, 0))
+        end do
+        do i = 1, Nh
+            read(LUheat, *)  ! Skip a line
+            read(LUheat, *) (s(Ni)%entries(j, i, 1), j = 1, s(Ni)%extents(i, 1))
+        end do
+            do i = 1, 4  ! Skip 4 lines
+                read(LUcool, *)
+                read(LUheat, *)
+            end do
+            
+        nTr = s(Ni)%extents(1, 0)
+        nTwbr = s(Ni)%extents(2, 0)
+        nToa = s(Ni)%extents(3, 0)
+        namfr = s(Ni)%extents(4, 0)
+        nfreq = s(Ni)%extents(5, 0)
+        allocate(s(Ni)%PelcMap(nTr, nTwbr, nToa, namfr, nfreq))
+        allocate(s(Ni)%QcsMap(nTr, nTwbr, nToa, namfr, nfreq))
+        allocate(s(Ni)%QclMap(nTr, nTwbr, nToa, namfr, nfreq))
+        do i = 1, PMClength
+            read(LUcool, *) (filler(j), j = 1, Nc), Pel, Qcs, Qcl
+            call SetPMvalue(s(Ni)%PelcMap, i, Pel, PMClength)
+            call SetPMvalue(s(Ni)%QcsMap, i, Qcs, PMClength)
+            call SetPMvalue(s(Ni)%QclMap, i, Qcl, PMClength)
+        end do
     
-    close(LUcool)
-    ! make a check ?
+        close(LUcool)
+        
+        nTr = s(Ni)%extents(1, 1)
+        nToa = s(Ni)%extents(2, 1)
+        nTwboa = s(Ni)%extents(3, 1)
+        namfr = s(Ni)%extents(4, 1)
+        nfreq = s(Ni)%extents(5, 1)
+        allocate(s(Ni)%PelhMap(nTr, nToa, nTwboa, namfr, nfreq))
+        allocate(s(Ni)%QhMap(nTr, nToa, nTwboa, namfr, nfreq))
+        do i = 1, PMHlength
+            read(LUheat, *) (filler(j), j = 1, Nh), Pel, Qh
+            call SetPMvalue(s(Ni)%PelhMap, i, Pel, PMHlength)
+            call SetPMvalue(s(Ni)%QhMap, i, Qh, PMHlength)
+        end do
+        
+        close(LUheat)
     
     end subroutine ReadPermap
     
     
-    function GetPMvalue(array, idx)
+    subroutine CheckPMfile(permapPath)
+        logical :: permapFileFound = .false.
+        character (len=maxPathLength) :: permapPath
+        character (len=maxMessageLength) :: msg
+        inquire(file=trim(permapPath), exist=permapFileFound)
+        if ( .not. permapFileFound ) then
+            write(msg,'("""",a,"""")') trim(permapPath)
+            msg = "Could not find the specified performance map file. Searched for: " // trim(msg)
+            call Messages(-1, msg, 'fatal', thisUnit, thisType)
+            return
+        end if
+    end subroutine CheckPMfile
+    
+    
+    function Interpolate(point, mode, Nout)
+        real(wp), intent(in) :: point(N)
+        real(wp) :: scaled_point(N), LBvalue, UBvalue, sp
+        real(wp), allocatable :: hypercube(:, :)
+        integer, intent(in) :: mode
+        integer, dimension(N) :: idx, lb_idx, counter_int, ones, zeros
+        integer :: i
+        logical :: counter_bool(N)
+        integer, intent(in) :: Nout
+        real(wp), allocatable :: interpolate(:)
+        zeros = 0
+        ones = 1
+        do i = 1, N
+            j = findlb(s(Ni)%entries(:, i, mode), point(i), s(Ni)%extents(i, mode))
+            lb_idx(i) = j
+            LBvalue = s(Ni)%entries(j, i, mode)
+            UBvalue = s(Ni)%entries(j+1, i, mode)
+            scaled_point(i) = (point(i) - LBvalue) / (UBvalue - LBvalue)
+        end do
+        allocate(hypercube(Nout, 2**N))
+        counter_bool = .true.
+        do i = 1, 2**N
+            call increment(counter_bool)
+            counter_int = merge(ones, zeros, counter_bool)
+            idx = lb_idx + counter_int
+            hypercube(:, i) = Vertex(i, idx)
+        end do
+
+        do i = 1, N
+            sp = scaled_point(i)
+            j = N - i
+            hypercube(:, :2**j) = (1-sp) * hypercube(:, :2**j) &
+                                    + sp * hypercube(:, 2**j+1:2**(j+1))
+        end do
+        allocate(interpolate(Nout))
+        do i = 1, Nout
+            interpolate(i) = hypercube(i, 1)
+        end do
+        deallocate(hypercube)
+    end function Interpolate
+    
+    
+    function Vertex(i, idx)
+        integer, intent(in) :: i, idx(:)
+        real(wp) :: Pel, Qcs, Qcl, vertex(Nout)
+        Pel = GetPMvalue(mode, s(Ni)%PelcMap, idx)
+        Qcs = GetPMvalue(mode, s(Ni)%QcsMap, idx)
+        Qcl = GetPMvalue(mode, s(Ni)%QclMap, idx)
+        vertex = (/Pel, Qcs, Qcl/)
+    end function Vertex
+    
+    
+    function GetPMvalue(mode, array, idx)
         integer, intent(in) :: idx(:)
-        integer :: i, array_idx
-        real(wp) :: array(PMlength)
+        integer :: mode, i, array_idx
+        real(wp) :: array((1-mode)*PMClength + mode*PMHlength)
         real(wp) :: GetPMvalue
         array_idx = idx(N)
         do i = N-1, 1, -1
-            array_idx = array_idx + product(s(Ni)%extents(i+1:)) * (idx(i) - 1)
+            array_idx = array_idx + product(s(Ni)%extents(i+1:, mode)) * (idx(i) - 1)
         end do
         GetPMvalue = array(array_idx)
     end function GetPMvalue
     
     
-    subroutine SetPMvalue(array, idx, value)
+    subroutine SetPMvalue(array, idx, value, PMlength)
+        integer, intent(in) :: idx, PMlength
         real(wp) :: array(PMlength)
         real(wp), intent(in) :: value
-        integer, intent(in) :: idx
         array(idx) = value
     end subroutine SetPMvalue
     
@@ -380,17 +442,25 @@ return
     subroutine increment(C)
         implicit none
         logical, intent(inout) :: C(:)
-        logical :: sumcarry(2)
-        integer :: N, k
+        logical :: sumcarry(2), hasFalse
+        integer :: N, k, i
         N = size(C)
-        sumcarry = full_adder(C(N), .true., .false.)
-        C(N) = sumcarry(1)
-        k = N - 1
-        do while (sumcarry(2))
-            sumcarry = full_adder(C(k), .false., sumcarry(2))
-            C(k) = sumcarry(1)
-            k = k-1
+        hasFalse = .false.
+        do i = 1, N
+            if (C(i) .neqv. .true.) hasFalse = .true.
         end do
+        if (hasFalse .neqv. .true.) then  ! reset if all true
+            C = .false.
+        else
+            sumcarry = full_adder(C(N), .true., .false.)
+            C(N) = sumcarry(1)
+            k = N - 1
+            do while (sumcarry(2))
+                sumcarry = full_adder(C(k), .false., sumcarry(2))
+                C(k) = sumcarry(1)
+                k = k-1
+            end do
+        end if
     end subroutine increment
     
     
