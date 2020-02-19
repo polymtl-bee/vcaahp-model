@@ -128,7 +128,7 @@ integer, parameter :: Nmax = max(Nc, Nh)
 integer :: PMClength, PMHlength  ! Length of the flattened performance map
 
 integer :: nTr, nTwbr, nToa, nTwboa, namfr, nfreq  ! number of entries for each variable
-integer :: i, j, N, Nout
+integer :: i, j, N, Noutc = 3, Nouth = 2, Nout
 
 
 ! Interpolation variables
@@ -173,12 +173,13 @@ point(4, mode) = amfr / amfrRated
 point(5, mode) = freq / freqRated
 N = (1-mode) * Nc + mode * Nh
 
-Nout = 3*(1-mode) + 2*mode
+Nout = Noutc*(1-mode) + Nouth*mode
 allocate(interpolationResults(Nout))
 interpolationResults = interpolate(point(:, mode), mode, Nout)
-Pel = interpolationResults(1) * PelcRated
+Pel = interpolationResults(1) * ((1-mode) * PelcRated + mode * PelhRated)
 Qcs = interpolationResults(2) * QcsRated
 Qcl = interpolationResults(3) * QclRated
+Qh = interpolationResults(4) * QhRated
 Qc = Qcs + Qcl
 deallocate(interpolationResults)
 
@@ -192,18 +193,22 @@ if (Qc < Qcs) then
 endif
 
 if (amfr /= 0.0_wp) then
-    hs = hr - Qc/amfr
-    ws = wr  ! useful when the following if clause is not true
-    hx = hr  ! same
-    if (Qcl > 0.0_wp) then
-        psydat(1) = pr
-        psydat(2) = Tr
-        hx = hr - Qcl/amfr
-        psydat(7) = hx  ! enthalpy of the state (Tr, ws)
-        call MoistAirProperties(thisUnit, thisType, 1, 5, 0, psydat, 1, status)  ! dry-bulb and enthalpy as inputs
-        if (ErrorFound()) return
-        ws = psydat(6)
-    endif
+    ws = wr
+    if (mode == 0) then
+        hs = hr - Qc/amfr
+        hx = hr  ! useful when the following if clause is not true
+        if (Qcl > 0.0_wp) then  ! compute humidity after condensation
+            psydat(1) = pr
+            psydat(2) = Tr
+            hx = hr - Qcl/amfr
+            psydat(7) = hx  ! enthalpy of the state (Tr, ws)
+            call MoistAirProperties(thisUnit, thisType, 1, 5, 0, psydat, 1, status)  ! dry-bulb and enthalpy as inputs
+            if (ErrorFound()) return
+            ws = psydat(6)
+        endif
+    else
+        hs = hr + Qh/amfr
+    end if
 else
     hs = hr
     ws = wr
@@ -221,14 +226,20 @@ RHs = psydat(4)
 ws = psydat(6)
 hs = psydat(7)
 
-! Re-calculate heat transfer whose value is modified if saturation occurs
-Qcs = amfr * (hx - hs)  ! Sensible cooling rate
-Qcl = amfr * (hr - hx)  ! Latent cooling rate
-Qc = Qcs + Qcl  ! Total cooling rate
-Qrej = Qc + Pel  ! Heat rejection
+if (mode == 0) then
+    ! Re-calculate heat transfer whose value is modified if saturation occurs
+    Qcs = amfr * (hx - hs)  ! Sensible cooling rate
+    Qcl = amfr * (hr - hx)  ! Latent cooling rate
+    Qc = Qcs + Qcl  ! Total cooling rate
+    Qrej = Qc + Pel  ! Heat rejection
+    Qabs = 0.0_wp
+else
+    Qrej = 0.0_wp
+    Qabs = Qh - Pel
+end if
 Pcomp = Pel - PfanI - PfanO  ! Compressor power
-if (Pel /= 0.) then
-    COP = Qc / Pel
+if (Pel /= 0.0_wp) then
+    COP = (Qc + Qh) / Pel
 else
     COP = 0.0_wp
 endif
@@ -344,7 +355,7 @@ return
         integer :: i
         logical :: counter_bool(N)
         integer, intent(in) :: Nout
-        real(wp), allocatable :: interpolate(:)
+        real(wp) :: interpolate(Noutc + Nouth - 1)
         zeros = 0
         ones = 1
         do i = 1, N
@@ -369,10 +380,22 @@ return
             hypercube(:, :2**j) = (1-sp) * hypercube(:, :2**j) &
                                     + sp * hypercube(:, 2**j+1:2**(j+1))
         end do
-        allocate(interpolate(Nout))
-        do i = 1, Nout
-            interpolate(i) = hypercube(i, 1)
-        end do
+        if (mode == 0) then
+            do i = 1, Noutc
+                interpolate(i) = hypercube(i, 1)
+            end do
+            do i = Noutc+1, Noutc+Nouth-1
+                interpolate(i) = 0.0_wp
+            end do
+        else
+            interpolate(1) = hypercube(1, 1)
+            do i = 2, Noutc
+                interpolate(i) = 0.0_wp
+            end do
+            do i = Noutc+1, Noutc+Nouth-1
+                interpolate(i) = hypercube(i-Noutc+1, 1)
+            end do
+        end if
         deallocate(hypercube)
     end function Interpolate
     
