@@ -6,69 +6,73 @@
 
     
 ! Inputs
-! ----------------------------------------------------------------------------------------------------
-! Nb | Variable     | Description                                   | Input  Units    | Internal Units
-! ----------------------------------------------------------------------------------------------------
-!  1 | Tr           | Inlet (return) air temperature                | °C              | °C
-!  2 | wr           | Inlet (return) air humidity ratio             | -               | -
-!  3 | RHr          | Inlet (return) air relative humidity          | % (base 100)    | -
-!  4 | amfr         | Inlet (return) air mass flow rate             | kg/h            | kg/h
-!  5 | pr           | Inlet (return) air pressure                   | atm             | atm
-!  6 | mode         | 0 = cooling mode                              | -               | -
-!                   | 1 = heating mode                              |                 |
-!  7 | Toa          | Outdoor air dry bulb temperature              | °C              | °C
-!  8 | RHoa         | Outdoor air realtive humidity                 | % (base 100)    | -
-!  9 | freq         | Compressor frequency                          | 1/s             | 1/s
-! 10 | PfanI        | Indoor fan power                              | kJ/h            | kJ/h
-! 11 | PfanO        | Outdoor fan power                             | kJ/h            | kJ/h
-! ----------------------------------------------------------------------------------------------------
+! --------------------------------------------------------------------------------------------------
+!  # | Variable     | Description                                   | Input  Units  | Internal Units
+! --------------------------------------------------------------------------------------------------
+!  1 | Tr           | Inlet (return) air temperature                | °C            | °C
+!  2 | wr           | Inlet (return) air humidity ratio             | -             | -
+!  3 | RHr          | Inlet (return) air relative humidity          | % (base 100)  | -
+!  4 | amfr         | Inlet (return) air mass flow rate             | kg/h          | kg/h
+!  5 | pr           | Inlet (return) air pressure                   | atm           | atm
+!  6 | mode         | 0 = cooling mode                              | -             | -
+!                   | 1 = heating mode                              |               |
+!  7 | Toa          | Outdoor air dry bulb temperature              | °C            | °C
+!  8 | RHoa         | Outdoor air realtive humidity                 | % (base 100)  | -
+!  9 | freq         | Compressor frequency                          | 1/s           | 1/s
+! 10 | PfanI        | Indoor fan power                              | kJ/h          | kJ/h
+! 11 | PfanO        | Outdoor fan power                             | kJ/h          | kJ/h
+! 12 | defrost_mode | -1 = defrost cycles (normal behaviour)        | -             | -
+!                   |  0 = defrost (off) mode                       |               |
+!                   |  1 = Recovery mode (transient)                |               |
+!                   |  2 = Steady-state mode                        |               |
+! --------------------------------------------------------------------------------------------------
 
 ! Parameters
-! ----------------------------------------------------------------------------------------------------
-! Nb | Variable     | Description                                   | Param. Units    | Internal Units
-! ----------------------------------------------------------------------------------------------------
-!  1 | yHum         | 1 = Humidity ratio as humidity input          | -               | -
-!                   | 2 = Relative humidity as humidity input       |                 |
-!  2 | PelcRated    | Rated total cooling power                     | kJ/h            | kJ/h
-!  3 | QcsRated     | Rated sensible cooling capacity               | kJ/h            | kJ/h
-!  4 | QclRated     | Rated latent cooling capacity                 | kJ/h            | kJ/h
-!  5 | PelhRated    | Rated total heating power                     | kJ/h            | kJ/h
-!  6 | QhRated      | Rated heating capacity                        | kJ/h            | kJ/h
-!  7 | amfrRated    | Rated inlet air mass flow rate                | kg/h            | kg/h
-!  8 | freqRated    | Rated frequency                               | 1/s             | 1/s
-!  9 | t_defrost    | Defrost duration during a cycle               | hr              | hr
-! 10 | Tcutoff      | Defrost cutoff temperature                    | °C              | °C
-! 11 | LUcool       | Logical Unit - cooling mode                   | -               | -
-! 12 | LUheat       | Logical Unit - heating mode                   | -               | -
-! ----------------------------------------------------------------------------------------------------
+! --------------------------------------------------------------------------------------------------
+!  # | Variable     | Description                                   | Param. Units  | Internal Units
+! --------------------------------------------------------------------------------------------------
+!  1 | yHum         | 1 = Humidity ratio as humidity input          | -             | -
+!                   | 2 = Relative humidity as humidity input       |               |
+!  2 | PelcRated    | Rated total cooling power                     | kJ/h          | kJ/h
+!  3 | QcsRated     | Rated sensible cooling capacity               | kJ/h          | kJ/h
+!  4 | QclRated     | Rated latent cooling capacity                 | kJ/h          | kJ/h
+!  5 | PelhRated    | Rated total heating power                     | kJ/h          | kJ/h
+!  6 | QhRated      | Rated heating capacity                        | kJ/h          | kJ/h
+!  7 | amfrRated    | Rated inlet air mass flow rate                | kg/h          | kg/h
+!  8 | freqRated    | Rated frequency                               | 1/s           | 1/s
+!  9 | t_defrost    | Defrost duration during a cycle               | hr            | hr
+! 10 | Tcutoff      | Defrost cutoff temperature                    | °C            | °C
+! 11 | LUcool       | Logical Unit - cooling mode                   | -             | -
+! 12 | LUheat       | Logical Unit - heating mode                   | -             | -
+! --------------------------------------------------------------------------------------------------
 
 ! Outputs
-! ----------------------------------------------------------------------------------------------------
-! Nb | Variable     | Description                                   | Output  Units   | Internal Units
-! ----------------------------------------------------------------------------------------------------
-!  1 | Ts           | Outlet (supply) air temperature               | °C              | °C
-!  2 | ws           | Outlet (supply) air humidity ratio            | -               | -
-!  3 | RHs          | Outlet (supply) air % RH                      | % (base 100)    | % (base 100)
-!  4 | amfr         | Outlet (supply) air mass flow rate            | kg/h            | kg/h
-!  5 | ps           | Outlet (supply) air pressure                  | atm             | atm
-!  6 | Qc           | Total cooling rate                            | kJ/h            | kJ/h
-!  7 | Qcs          | Sensible cooling rate                         | kJ/h            | kJ/h
-!  8 | Qcl          | Latent cooling rate                           | kJ/h            | kJ/h
-!  9 | Qrej         | Heat rejection rate                           | kJ/h            | kJ/h
-! 10 | Qh           | Total heating rate                            | kJ/h            | kJ/h
-! 11 | Qabs         | Heat absorption rate                          | kJ/h            | kJ/h
-! 12 | Pel          | Total power consumption                       | kJ/h            | kJ/h
-! 13 | COP          | Coefficient of performance                    | -               | -
-! 14 | EER          | Energy efficiency rating                      | -               | -
-! 15 | PfanI        | Indoor fan power                              | kJ/h            | kJ/h
-! 16 | PfanO        | Outdoor fan power                             | kJ/h            | kJ/h
-! 17 | Pcomp        | Compressor power                              | kJ/h            | kJ/h
-! 18 | Tc           | Condensate temperature                        | °C              | °C
-! 19 | cmfr         | Condensate mass flow rate                     | kg/h            | kg/h
-! 20 | defrost_mode | 0 = defrost (off) mode                        | -               | -
-!                   | 1 = Recovery mode (transient)                 |                 |
-!                   | 2 = Steady-state mode                         |                 |
-! ----------------------------------------------------------------------------------------------------
+! --------------------------------------------------------------------------------------------------
+!  # | Variable     | Description                                   | Output  Units | Internal Units
+! --------------------------------------------------------------------------------------------------
+!  1 | Ts           | Outlet (supply) air temperature               | °C            | °C
+!  2 | ws           | Outlet (supply) air humidity ratio            | -             | -
+!  3 | RHs          | Outlet (supply) air % RH                      | % (base 100)  | % (base 100)
+!  4 | amfr         | Outlet (supply) air mass flow rate            | kg/h          | kg/h
+!  5 | ps           | Outlet (supply) air pressure                  | atm           | atm
+!  6 | Qc           | Total cooling rate                            | kJ/h          | kJ/h
+!  7 | Qcs          | Sensible cooling rate                         | kJ/h          | kJ/h
+!  8 | Qcl          | Latent cooling rate                           | kJ/h          | kJ/h
+!  9 | Qrej         | Heat rejection rate                           | kJ/h          | kJ/h
+! 10 | Qh           | Total heating rate                            | kJ/h          | kJ/h
+! 11 | Qabs         | Heat absorption rate                          | kJ/h          | kJ/h
+! 12 | Pel          | Total power consumption                       | kJ/h          | kJ/h
+! 13 | COP          | Coefficient of performance                    | -             | -
+! 14 | EER          | Energy efficiency rating                      | -             | -
+! 15 | PfanI        | Indoor fan power                              | kJ/h          | kJ/h
+! 16 | PfanO        | Outdoor fan power                             | kJ/h          | kJ/h
+! 17 | Pcomp        | Compressor power                              | kJ/h          | kJ/h
+! 18 | Tc           | Condensate temperature                        | °C            | °C
+! 19 | cmfr         | Condensate mass flow rate                     | kg/h          | kg/h
+! 20 | defrost_mode | 0 = defrost (off) mode                        | -             | -
+!                   | 1 = Recovery mode (transient)                 |               |
+!                   | 2 = Steady-state mode                         |               |
+! --------------------------------------------------------------------------------------------------
 
 module Type3254Data
 
@@ -131,7 +135,7 @@ integer, parameter :: Ninstances = 1  ! Number of units
 integer :: Ni = 1  ! temporary, should use a kernel function to get the actual instance number.
 
 ! Defrost variables
-integer :: defrost_mode = 2
+integer :: defrost_mode = 1
 real(wp) :: t_uc = 0, t_oc = 0  ! time under/over cutoff temperature
 real(wp) :: t_cy  ! duration of a full defrost cycle
 real(wp) :: t_rec  ! time between defrost and steady-state (recovery mode)
@@ -194,7 +198,7 @@ if (mode == 1) then ! compute outdoor air wet bulb
     psydat(4) = RHoa/100.0_wp
     call MoistAirProperties(thisUnit, thisType, 1, 2, 1, psydat, 1, status)
     Twboa = psydat(3)
-    call SetDefrostMode()
+    if (defrost_mode == -1) call SetDefrostMode()
     defrost_corr = Correction(defrost_mode, t_ld, tau)
 end if
 
@@ -513,9 +517,9 @@ return
         N = size(C)
         hasFalse = .false.
         do i = 1, N
-            if (C(i) .neqv. .true.) hasFalse = .true.
+            if (.not. C(i)) hasFalse = .true.
         end do
-        if (hasFalse .neqv. .true.) then  ! reset if all true
+        if (.not. hasFalse) then  ! reset if all true
             C = .false.
         else
             sumcarry = full_adder(C(N), .true., .false.)
@@ -531,8 +535,8 @@ return
     
     
     subroutine SetDefrostMode
-        t_cy = 156
-        t_rec = 30
+        t_cy = 156.0_wp / 60.0_wp  ! hours
+        t_rec = 30.0_wp / 60.0_wp  ! hours
         t_ss = t_cy - t_off - t_rec
         tau = t_rec - t_off
         t_ld = GetDynamicArrayValueLastTimestep(1)
@@ -547,25 +551,22 @@ return
     
         if (t_ld < t_rec) then
             defrost_mode = 1
-            t_ld = t_ld + dt
         else if (t_ld < t_rec + t_ss) then
             defrost_mode = 2
-            t_ld = t_ld + dt
         else if (t_uc < t_oc) then
             t_uc = 0.0_wp
             t_oc = 0.0_wp
-            t_ld = t_rec
+            t_ld = t_rec - dt
             defrost_mode = 2
         else if (t_ld < t_cy) then
-            t_ld = t_ld + dt
             defrost_mode = 0
         else
-            t_ld = 0.0_wp
+            t_ld = -dt
             t_uc = 0.0_wp
             t_oc = 0.0_wp
             defrost_mode = 1
         end if
-        
+        t_ld = t_ld + dt
         call SetDynamicArrayValueThisIteration(1, t_ld)
         call SetDynamicArrayValueThisIteration(2, t_uc)
         call SetDynamicArrayValueThisIteration(3, t_oc)
@@ -596,7 +597,7 @@ return
 
   	    ! Tell the TRNSYS engine how this Type works
   	    call SetNumberofParameters(12)
-  	    call SetNumberofInputs(11)
+  	    call SetNumberofInputs(12)
   	    call SetNumberofDerivatives(0)
   	    call SetNumberofOutputs(20)
   	    call SetIterationMode(1)
@@ -694,6 +695,7 @@ return
         freq = GetInputValue(9)
         PfanI = GetInputValue(10)
         PfanO = GetInputValue(11)
+        defrost_mode = GetInputValue(12)
     end subroutine GetInputValues
     
     

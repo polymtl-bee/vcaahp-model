@@ -43,7 +43,7 @@ __
 __
 __
 __
-43
+44
 Return air temperature
 SN
 1
@@ -618,7 +618,7 @@ real
 0
 kJ/hr
 Power
-Defrost cycle duration
+Defrost duration
 SN
 1
 
@@ -627,11 +627,11 @@ real
 3
 +
 0
-30
+0.5
 [ ; ]
-5
+0.1
 0
-min
+hr
 Time
 Defrost cutoff temperature
 SN
@@ -693,6 +693,24 @@ integer
 0
 -
 dimensionless
+Defrost mode
+SN
+4
+-1 = Automatic defrost cycles
+0 = Always set to defrost mode
+1 = Always set to recovery mode
+2 = Always set to steady-state mode
+simple
+integer
+1
++
+-1
+2
+[ ; ]
+-1
+0
+-
+Dimensionless
 0
 0
 0
@@ -808,7 +826,7 @@ Logical Unit - heating mode
 0
 0
 0
-10
+11
 0
 
 

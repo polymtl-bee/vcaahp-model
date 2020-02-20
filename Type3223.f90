@@ -1,30 +1,37 @@
-﻿!TRNSYS Type3223: Variable capacity heat pump controller.
-! ---------------------------------------------------------------------------------------------------------------------
-!
+﻿! +---------------------------------------------------------+
+! | TRNSYS Type3223: Variable capacity heat pump controller |
+! +---------------------------------------------------------+
+    
 ! This routine implements a controller for an air-source heat pump with variable speed compressor.
-!
-!
+
+
 ! Inputs
-! ---------------------------------------------------------------------------------------------------------------------
-! Nb | Variable     | Description                                                   | Input Units     | Internal Units
-! ---|--------------|---------------------------------------------------------------|-----------------|----------------
-!  1 | Tset         | Setpoint temperature (command signal)                         | °C              | °C
-!  2 | Tr           | Controlled variable                                           | °C              | °C
-!  3 | onOff        | ON/OFF signal                                                 | -               | -
-!  4 | fmin         | Minimum value for the frequency (control signal)              | -               | -
-!  5 | fmax         | Maximum value for the frequency (control signal)              | -               | -
-!  6 | Kc           | Gain constant                                                 | any             | any
-!  7 | ti           | Integral time constant                                        | h               | h
-!  8 | tt           | Tracking time constant                                        | h               | h
-!  9 | b            | Proportional setpoint weight                                  | -               | -
-!
-!
+! ------------------------------------------------------------------------------------------------------
+!  # | Variable     | Description                                       | Input Units   | Internal Units
+! ------------------------------------------------------------------------------------------------------
+!  1 | Tset         | Setpoint temperature (command signal)             | °C            | °C
+!  2 | Tr           | Controlled variable                               | °C            | °C
+!  3 | onOff        | ON/OFF signal                                     | -             | -
+!  4 | fmin         | Minimum value for the frequency (control signal)  | -             | -
+!  5 | fmax         | Maximum value for the frequency (control signal)  | -             | -
+!  6 | Kc           | Gain constant                                     | any           | any
+!  7 | ti           | Integral time constant                            | h             | h
+!  8 | tt           | Tracking time constant                            | h             | h
+!  9 | b            | Proportional setpoint weight                      | -             | -
+! 10 | N            | Number of frequency levels                        | -             | -
+! 11 | mode         | 0 = cooling mode                                  | -             | -
+!                   | 1 = heating mode                                  |               |
+! ------------------------------------------------------------------------------------------------------
+
 ! Outputs
-! ---------------------------------------------------------------------------------------------------------------------
-! Nb | Variable     | Description                                                   | Output  Units   | Internal Units
-! ---|--------------|---------------------------------------------------------------|-----------------|----------------
-!  1 | f            | Normalized frequency                                          | -               | -
-! 
+! ------------------------------------------------------------------------------------------------------
+!  # | Variable     | Description                                       | Output  Units | Internal Units
+! ------------------------------------------------------------------------------------------------------
+!  1 | f            | Normalized frequency                              | -             | -
+!  2 | mode         | 0 = cooling mode                                  | -             | -
+!                   | 1 = heating mode                                  |               |
+! ------------------------------------------------------------------------------------------------------
+    
 ! Author: Gregor Strugala
 
 subroutine Type3223
@@ -45,8 +52,8 @@ real(wp) :: onOff, Kc, ti, tt, b  ! Controller parameters
 real(wp) :: e, es, f, fp, fi  ! Controller signals
 real(wp) :: h ! timestep
 real(wp) :: Tset_old, Tr_old, fi_old, es_old, e_old  ! Values of the previous timestep
-integer :: N  ! Number of frequency levels
-integer :: Nsvar = 4, Noutputs = 1  ! number of of stored variables and outputs returned by the Type
+integer :: N, mode  ! Number of frequency levels, operating mode
+integer :: Nsvar = 3, Noutputs = 2  ! number of of stored variables and outputs returned by the Type
 
 integer :: thisUnit, thisType    ! unit and type numbers
 
@@ -61,7 +68,15 @@ call ExecuteSpecialCases()
 call GetInputValues()
 if (ErrorFound()) return
 
-e = Tset - Tr  ! Error
+if (mode == -1) then
+    if (Tr < Tset) then
+        mode = 1
+    else
+        mode = 0
+    end if
+end if
+
+e = (Tset - Tr) * (2.0_wp * real(mode, wp) - 1.0_wp)  ! Error
 
 ! Default values for extra parameters
 if (tt < 0.0_wp) then
@@ -74,12 +89,11 @@ endif
 
 ! Recall stored values
 call RecallStoredValues()
-e_old = Tset_old - Tr_old
 
 if (onOff <= 0) then
     f = 0
 else
-    fp = Kc * (b*Tset - Tr)  ! Proportional signal
+    fp = Kc * (b*Tset - Tr) * (2.0_wp * real(mode, wp) - 1.0_wp)  ! Proportional signal
     if (ti > 0.0_wp) then  ! Integral action
         fi = fi_old + Kc / ti * h * (e + e_old) / 2  ! Update the integral (using trapezoidal integration).
     else
@@ -103,38 +117,31 @@ return
     contains
     
     subroutine StoreValues
-    
-    call SetOutputValue(Noutputs+1, Tset)
-    call SetOutputValue(Noutputs+2, Tr)
-    call SetOutputValue(Noutputs+3, fi)
-    call SetOutputValue(Noutputs+4, es)
-    
+        call SetOutputValue(Noutputs+1, e)
+        call SetOutputValue(Noutputs+2, fi)
+        call SetOutputValue(Noutputs+3, es)
     end subroutine StoreValues
     
     
     subroutine RecallStoredValues
-    
-    Tset_old = GetOutputValue(Noutputs+1)
-    Tr_old = GetOutputValue(Noutputs+2)
-    fi_old = GetOutputValue(Noutputs+3)
-    es_old = GetOutputValue(Noutputs+4)
-    
+        e_old = GetOutputValue(Noutputs+1)
+        fi_old = GetOutputValue(Noutputs+2)
+        es_old = GetOutputValue(Noutputs+3)
     end subroutine RecallStoredValues
     
     
     subroutine GetInputValues
-    
-    Tset = GetInputValue(1)
-    Tr = GetInputValue(2)
-    onOff = GetInputValue(3)
-    fmin = GetInputValue(4)
-    fmax = GetInputValue(5)
-    Kc = GetInputValue(6)
-    ti = GetInputValue(7)
-    tt = GetInputValue(8)
-    b = GetInputValue(9)
-    N = GetInputValue(10)
-    
+        Tset = GetInputValue(1)
+        Tr = GetInputValue(2)
+        onOff = GetInputValue(3)
+        fmin = GetInputValue(4)
+        fmax = GetInputValue(5)
+        Kc = GetInputValue(6)
+        ti = GetInputValue(7)
+        tt = GetInputValue(8)
+        b = GetInputValue(9)
+        N = GetInputValue(10)
+        mode = GetInputValue(11)
     end subroutine GetInputValues
     
 
@@ -142,66 +149,47 @@ return
     
     ! Last call in the simulation (after last timestep has converged)
     if (GetIsLastCallofSimulation()) then
-        ! This Type should not perform any task during the last call
-        return  ! We are done for this call
+        return
     endif
 
     ! End of timestep call (after convergence or too many iterations)
     if (GetIsEndOfTimestep()) then
-        return  ! We are done for this call
+        return
     endif
 
     ! Very first call of simulation (initialization call)
     if(GetIsFirstCallofSimulation()) then
-
-	    !Tell the TRNSYS Engine How This Type Works
 	    call SetNumberofParameters(0)
-	    call SetNumberofInputs(10)
+	    call SetNumberofInputs(11)
 	    call SetNumberofDerivatives(0)
 	    call SetNumberofOutputs(Nsvar + Noutputs)
-	    call SetIterationMode(1)  ! An indicator for the iteration mode (default=1).  Refer to section 8.4.3.5 of the documentation for more details.
-	    call SetNumberStoredVariables(0,0)  ! The number of static variables that the model wants stored in the global storage array and the number of dynamic variables that the model wants stored in the global storage array
-	    call SetNumberofDiscreteControls(0)  ! The number of discrete control functions set by this model (a value greater than zero requires the user to use Solver 1: Powell's method)
+	    call SetIterationMode(1)
+	    call SetNumberStoredVariables(0,0)
+	    call SetNumberofDiscreteControls(0)
         call SetIterationMode(2)
         h = GetSimulationTimeStep()
-
 	    return
-
     endif
 
-    ! Start time call: not a real time step, there are no iterations at the initial time - output initial conditions
     if (GetIsStartTime()) then
-
         call GetInputValues()
-
-        !Check the Parameters for Problems (#,ErrorType,Text)
-        !Sample Code: If( PAR1 <= 0.) Call FoundBadParameter(1,'Fatal','The first parameter provided to this model is not acceptable.')
-
-        !Set the Initial Values of the Outputs (#,Value)
-	    call SetOutputValue(1, 0.0_wp) ! Normalized frequency
-        call SetOutputValue(2, Tset)
-        call SetOutputValue(3, Tr)
-
+	    call SetOutputValue(1, 0.0_wp)  ! Normalized frequency
+        call SetOutputValue(2, 0.0_wp)  ! Operating mode
 	    return
-
     endif
 
-    ! TRNSYS has detected that parameters must be re-read - indicates another unit of this Type
     if(GetIsReReadParameters()) then
-
     endif
     
     end subroutine ExecuteSpecialCases
     
     
     subroutine SetOutputValues
-    
-    !Set the Outputs from this Model (#,Value)
-    call SetOutputValue(1, fq) ! Normalized saturated quantized frequency
-    
-    return
-    
+        call SetOutputValue(1, fq)  ! Normalized saturated quantized frequency
+        call SetOutputValue(2, real(mode, wp))  ! Operating mode
+        return
     end subroutine SetOutputValues
+    
     
     subroutine GetTRNSYSvariables
         time = getSimulationTime()
