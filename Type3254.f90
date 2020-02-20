@@ -82,6 +82,7 @@ type Type3254DataStruct
     ! Parameters
     real(wp), allocatable :: entries(:, :, :)
     integer, allocatable :: extents(:, :)
+    integer :: PMClength, PMHlength  ! Length of the flattened performance map
 
     ! Performance matrices
     real(wp), allocatable :: PelcMap(:, :, :, :, :)
@@ -142,7 +143,6 @@ real(wp) :: defrost_corr(2) = 0.0_wp  ! correction factors
 ! Performance map reading variables
 integer, parameter :: Nc = 5, Nh = 5  ! Number of interpolation variables
 integer, parameter :: Nmax = max(Nc, Nh)
-integer :: PMClength, PMHlength  ! Length of the flattened performance map
 integer :: i, j, N, Noutc = 3, Nouth = 2, Nout
 
 
@@ -161,6 +161,8 @@ call ExecuteSpecialCases()
 call GetInputValues()
 if (ErrorFound()) return
 
+! Ni = GetCurrentUnit()
+
 ! Return air state
 psydat(1) = pr
 psydat(2) = Tr
@@ -171,8 +173,12 @@ if (yHum == 1) then
 else
     psymode = 2
 endif
-call MoistAirProperties(thisUnit, thisType, 1, psymode, 1, psydat, 1, status)
-! (unit, type, si units used, psych inputs, Twb computed, inputs, warning mgmt, warning occurences)
+if (mode==0) then 
+    call MoistAirProperties(thisUnit, thisType, 1, psymode, 1, psydat, 1, status)
+    ! (unit, type, si units used, psych inputs, Twb computed, inputs, warning mgmt, warning occurences)
+else
+    call MoistAirProperties(thisUnit, thisType, 1, psymode, 0, psydat, 1, status)  ! Twb not computed
+end if
 pr = psydat(1)
 Tr = psydat(2)
 Twbr = psydat(3)
@@ -180,12 +186,13 @@ RHr = psydat(4)  ! RHr between 0 and 1 (not 0 and 100)
 wr = psydat(6)
 hr = psydat(7)
 
-! Outdoor air wet bulb
-psydat(1) = pr
-psydat(2) = Toa
-psydat(4) = RHoa/100.0_wp
-call MoistAirProperties(thisUnit, thisType, 1, 2, 1, psydat, 1, status)
-Twboa = psydat(3)
+if (mode == 1) then ! compute outdoor air wet bulb
+    psydat(1) = pr
+    psydat(2) = Toa
+    psydat(4) = RHoa/100.0_wp
+    call MoistAirProperties(thisUnit, thisType, 1, 2, 1, psydat, 1, status)
+    Twboa = psydat(3)
+end if
 
 if (mode == 1) then
     t_cy = 156
@@ -328,7 +335,7 @@ return
         integer :: nTr, nTwbr, nToa, nTwboa, namfr, nfreq  ! number of entries for each variable
         real(wp) :: filler(Nmax)
     
-        !Ni = GetCurrentUnit()
+        ! Ni = GetCurrentUnit()
     
         permapCoolPath = GetLUfileName(LUcool)
         permapHeatPath = GetLUfileName(LUheat)
@@ -351,8 +358,8 @@ return
             read(LUheat, *)  ! Skip a line
             read(LUheat, *) s(Ni)%extents(i, 1)
         end do
-        PMClength = product(s(Ni)%extents(:, 0))
-        PMHlength = product(s(Ni)%extents(:, 1))
+        s(Ni)%PMClength = product(s(Ni)%extents(:, 0))
+        s(Ni)%PMHlength = product(s(Ni)%extents(:, 1))
         allocate(s(Ni)%entries(maxval(s(Ni)%extents), Nmax, 0:1))
         do i = 1, Nc
             read(LUcool, *)  ! Skip a line
@@ -375,11 +382,11 @@ return
         allocate(s(Ni)%PelcMap(nTr, nTwbr, nToa, namfr, nfreq))
         allocate(s(Ni)%QcsMap(nTr, nTwbr, nToa, namfr, nfreq))
         allocate(s(Ni)%QclMap(nTr, nTwbr, nToa, namfr, nfreq))
-        do i = 1, PMClength
+        do i = 1, s(Ni)%PMClength
             read(LUcool, *) (filler(j), j = 1, Nc), Pel, Qcs, Qcl
-            call SetPMvalue(s(Ni)%PelcMap, i, Pel, PMClength)
-            call SetPMvalue(s(Ni)%QcsMap, i, Qcs, PMClength)
-            call SetPMvalue(s(Ni)%QclMap, i, Qcl, PMClength)
+            call SetPMvalue(s(Ni)%PelcMap, i, Pel, s(Ni)%PMClength)
+            call SetPMvalue(s(Ni)%QcsMap, i, Qcs, s(Ni)%PMClength)
+            call SetPMvalue(s(Ni)%QclMap, i, Qcl, s(Ni)%PMClength)
         end do
     
         close(LUcool)
@@ -391,10 +398,10 @@ return
         nfreq = s(Ni)%extents(5, 1)
         allocate(s(Ni)%PelhMap(nTr, nToa, nTwboa, namfr, nfreq))
         allocate(s(Ni)%QhMap(nTr, nToa, nTwboa, namfr, nfreq))
-        do i = 1, PMHlength
+        do i = 1, s(Ni)%PMHlength
             read(LUheat, *) (filler(j), j = 1, Nh), Pel, Qh
-            call SetPMvalue(s(Ni)%PelhMap, i, Pel, PMHlength)
-            call SetPMvalue(s(Ni)%QhMap, i, Qh, PMHlength)
+            call SetPMvalue(s(Ni)%PelhMap, i, Pel, s(Ni)%PMHlength)
+            call SetPMvalue(s(Ni)%QhMap, i, Qh, s(Ni)%PMHlength)
         end do
         
         close(LUheat)
@@ -489,7 +496,7 @@ return
     function GetPMvalue(mode, array, idx)
         integer, intent(in) :: idx(:)
         integer :: mode, i, array_idx
-        real(wp) :: array((1-mode)*PMClength + mode*PMHlength)
+        real(wp) :: array((1-mode)*s(Ni)%PMClength + mode*s(Ni)%PMHlength)
         real(wp) :: GetPMvalue
         array_idx = idx(N)
         do i = N-1, 1, -1
@@ -708,7 +715,7 @@ return
         call SetOutputValue(17, Pcomp)  ! Compressor power
         call SetOutputValue(18, Tc)  ! Condensate temperature
         call SetOutputValue(19, cmfr)  ! Condensate flow rate
-        call SetOutputValue(20, defrost_mode)  ! Defrost mode
+        call SetOutputValue(20, real(defrost_mode, wp))  ! Defrost mode
     end subroutine SetOutputValues
     
     
