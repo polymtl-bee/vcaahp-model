@@ -162,6 +162,8 @@ call GetInputValues()
 if (ErrorFound()) return
 
 ! Ni = GetCurrentUnit()
+N = (1-mode) * Nc + mode * Nh
+Nout = Noutc*(1-mode) + Nouth*mode
 
 ! Return air state
 psydat(1) = pr
@@ -192,53 +194,11 @@ if (mode == 1) then ! compute outdoor air wet bulb
     psydat(4) = RHoa/100.0_wp
     call MoistAirProperties(thisUnit, thisType, 1, 2, 1, psydat, 1, status)
     Twboa = psydat(3)
-end if
-
-if (mode == 1) then
-    t_cy = 156
-    t_rec = 30
-    t_ss = t_cy - t_off - t_rec
-    tau = t_rec - t_off
-    t_ld = GetDynamicArrayValueLastTimestep(1)
-    t_uc = GetDynamicArrayValueLastTimestep(2)
-    t_oc = GetDynamicArrayValueLastTimestep(3)
-    
-    if (Toa < Tcutoff) then
-        t_uc = t_uc + dt
-    else
-        t_oc = t_oc + dt
-    end if
-    
-    if (t_ld < t_rec) then
-        defrost_mode = 1
-        t_ld = t_ld + dt
-    else if (t_ld < t_rec + t_ss) then
-        defrost_mode = 2
-        t_ld = t_ld + dt
-    else if (t_uc < t_oc) then
-        t_uc = 0.0_wp
-        t_oc = 0.0_wp
-        t_ld = t_rec
-        defrost_mode = 2
-    else if (t_ld < t_cy) then
-        t_ld = t_ld + dt
-        defrost_mode = 0
-    else
-        t_ld = 0.0_wp
-        t_uc = 0.0_wp
-        t_oc = 0.0_wp
-        defrost_mode = 1
-    end if
+    call SetDefrostMode()
     defrost_corr = Correction(defrost_mode, t_ld, tau)
-    call SetDynamicArrayValueThisIteration(1, t_ld)
-    call SetDynamicArrayValueThisIteration(2, t_uc)
-    call SetDynamicArrayValueThisIteration(3, t_oc)
 end if
-
 
 ! Interpolate using wet bulb
-N = (1-mode) * Nc + mode * Nh
-Nout = Noutc*(1-mode) + Nouth*mode
 point(1, mode) = Tr
 if (mode == 0) then
     point(2, mode) = Twbr
@@ -568,6 +528,48 @@ return
             end do
         end if
     end subroutine increment
+    
+    
+    subroutine SetDefrostMode
+        t_cy = 156
+        t_rec = 30
+        t_ss = t_cy - t_off - t_rec
+        tau = t_rec - t_off
+        t_ld = GetDynamicArrayValueLastTimestep(1)
+        t_uc = GetDynamicArrayValueLastTimestep(2)
+        t_oc = GetDynamicArrayValueLastTimestep(3)
+        
+        if (Toa < Tcutoff) then
+            t_uc = t_uc + dt
+        else
+            t_oc = t_oc + dt
+        end if
+    
+        if (t_ld < t_rec) then
+            defrost_mode = 1
+            t_ld = t_ld + dt
+        else if (t_ld < t_rec + t_ss) then
+            defrost_mode = 2
+            t_ld = t_ld + dt
+        else if (t_uc < t_oc) then
+            t_uc = 0.0_wp
+            t_oc = 0.0_wp
+            t_ld = t_rec
+            defrost_mode = 2
+        else if (t_ld < t_cy) then
+            t_ld = t_ld + dt
+            defrost_mode = 0
+        else
+            t_ld = 0.0_wp
+            t_uc = 0.0_wp
+            t_oc = 0.0_wp
+            defrost_mode = 1
+        end if
+        
+        call SetDynamicArrayValueThisIteration(1, t_ld)
+        call SetDynamicArrayValueThisIteration(2, t_uc)
+        call SetDynamicArrayValueThisIteration(3, t_oc)
+    end subroutine SetDefrostMode
     
     
     function Correction(defrost_mode, t_ld, tau)
