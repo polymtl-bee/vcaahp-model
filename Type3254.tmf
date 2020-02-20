@@ -43,7 +43,7 @@ __
 __
 __
 __
-39
+43
 Return air temperature
 SN
 1
@@ -183,6 +183,21 @@ integer
 0
 -
 Dimensionless
+Outdoor air relative humidity
+SN
+1
+
+simple
+real
+1
++
+0
+100
+[ ; ]
+0
+0
+% (base 100)
+Percentage
 Compressor frequency
 SN
 1
@@ -603,6 +618,36 @@ real
 0
 kJ/hr
 Power
+Defrost cycle duration
+SN
+1
+
+simple
+real
+3
++
+0
+30
+[ ; ]
+5
+0
+min
+Time
+Defrost cutoff temperature
+SN
+1
+
+simple
+real
+3
++
+-Inf
++Inf
+[ ; ]
+6
+0
+C
+Temperature
 Logical Unit - cooling mode
 SN
 1
@@ -630,6 +675,21 @@ integer
 +Inf
 [ ; ]
 31
+0
+-
+dimensionless
+Defrost mode
+SN
+1
+
+simple
+integer
+2
++
+0
+2
+[ ; ]
+0
 0
 -
 dimensionless
@@ -748,21 +808,21 @@ Logical Unit - heating mode
 0
 0
 0
-9
+10
 0
 
 
 1
 100
 0
-18
+19
 0
 
 
 1
 100
 0
-9
+11
 0
 
 
