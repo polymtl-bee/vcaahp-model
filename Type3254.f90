@@ -12,33 +12,35 @@
 !  1 | Tr           | Inlet (return) air temperature                | °C            | °C
 !  2 | wr           | Inlet (return) air humidity ratio             | -             | -
 !  3 | RHr          | Inlet (return) air relative humidity          | % (base 100)  | -
-!  4 | amfr         | Inlet (return) air mass flow rate             | kg/h          | kg/h
-!  5 | pr           | Inlet (return) air pressure                   | atm           | atm
-!  6 | mode         | 0 = cooling mode                              | -             | -
-!                   | 1 = heating mode                              |               |
-!  7 | Toa          | Outdoor air dry bulb temperature              | °C            | °C
-!  8 | RHoa         | Outdoor air realtive humidity                 | % (base 100)  | -
+!  4 | pr           | Inlet (return) air pressure                   | atm           | atm
+!  5 | Toa          | Outdoor air dry bulb temperature              | °C            | °C
+!  6 | woa          | Outdoor air humidity ratio                    | -             | -
+!  7 | RHoa         | Outdoor air realtive humidity                 | % (base 100)  | -
+!  8 | poa          | Outdoor air pressure                          | atm           | atm
 !  9 | freq         | Compressor frequency                          | 1/s           | 1/s
-! 10 | PfanI        | Indoor fan power                              | kJ/h          | kJ/h
-! 11 | PfanO        | Outdoor fan power                             | kJ/h          | kJ/h
-! 12 | defrost_mode | -1 = defrost cycles (normal behaviour)        | -             | -
-!                   |  0 = defrost (off) mode                       |               |
-!                   |  1 = Recovery mode (transient)                |               |
-!                   |  2 = Steady-state mode                        |               |
+! 10 | mDot         | Inlet (return) air mass flow rate             | kg/h          | kg/h
+! 11 | mode         | 0 = cooling mode                              | -             | -
+!                   | 1 = heating mode                              |               |
+! 12 | defrost_mode |-1 = defrost cycles (normal behaviour)         | -             | -
+!                   | 0 = defrost (off) mode                        |               |
+!                   | 1 = recovery mode (transient)                 |               |
+!                   | 2 = steady-state mode                         |               |
+! 13 | PfanI        | Indoor fan power                              | kJ/h          | kJ/h
+! 14 | PfanO        | Outdoor fan power                             | kJ/h          | kJ/h
 ! --------------------------------------------------------------------------------------------------
 
 ! Parameters
 ! --------------------------------------------------------------------------------------------------
 !  # | Variable     | Description                                   | Param. Units  | Internal Units
 ! --------------------------------------------------------------------------------------------------
-!  1 | yHum         | 1 = Humidity ratio as humidity input          | -             | -
-!                   | 2 = Relative humidity as humidity input       |               |
+!  1 | psymode      | 2 = Humidity ratio as humidity input          | -             | -
+!                   | 4 = Relative humidity as humidity input       |               |
 !  2 | PelcRated    | Rated total cooling power                     | kJ/h          | kJ/h
 !  3 | QcsRated     | Rated sensible cooling capacity               | kJ/h          | kJ/h
 !  4 | QclRated     | Rated latent cooling capacity                 | kJ/h          | kJ/h
 !  5 | PelhRated    | Rated total heating power                     | kJ/h          | kJ/h
 !  6 | QhRated      | Rated heating capacity                        | kJ/h          | kJ/h
-!  7 | amfrRated    | Rated inlet air mass flow rate                | kg/h          | kg/h
+!  7 | AFRrated     | Rated inlet air mass flow rate                | kg/h          | kg/h
 !  8 | freqRated    | Rated frequency                               | 1/s           | 1/s
 !  9 | t_defrost    | Defrost duration during a cycle               | hr            | hr
 ! 10 | Tcutoff      | Defrost cutoff temperature                    | °C            | °C
@@ -53,8 +55,8 @@
 !  1 | Ts           | Outlet (supply) air temperature               | °C            | °C
 !  2 | ws           | Outlet (supply) air humidity ratio            | -             | -
 !  3 | RHs          | Outlet (supply) air % RH                      | % (base 100)  | % (base 100)
-!  4 | amfr         | Outlet (supply) air mass flow rate            | kg/h          | kg/h
-!  5 | ps           | Outlet (supply) air pressure                  | atm           | atm
+!  4 | ps           | Outlet (supply) air pressure                  | atm           | atm
+!  5 | mDot         | Outlet (supply) air mass flow rate            | kg/h          | kg/h
 !  6 | Qc           | Total cooling rate                            | kJ/h          | kJ/h
 !  7 | Qcs          | Sensible cooling rate                         | kJ/h          | kJ/h
 !  8 | Qcl          | Latent cooling rate                           | kJ/h          | kJ/h
@@ -118,10 +120,10 @@ integer :: thisUnit, thisType  ! unit and type numbers
 real(wp) :: time, dt  ! TRNSYS time and timestep
 
 ! Proforma variables
-real(wp) :: Tr, wr, RHr, amfr, pr, Toa, RHoa, freq, PfanI, PfanO  ! Inputs
+real(wp) :: Tr, wr, RHr, mDot, pr, Toa, woa, RHoa, poa, freq, PfanI, PfanO  ! Inputs
 integer :: mode  ! operating mode
-integer :: yHum, LUcool, LUheat  ! Parameters
-real(wp) :: PelcRated, QcsRated, QclRated, PelhRated, QhRated, amfrRated, freqRated  ! Parameters (rated values)
+integer :: psymode, LUcool, LUheat  ! Parameters
+real(wp) :: PelcRated, QcsRated, QclRated, PelhRated, QhRated, AFRrated, freqRated  ! Parameters (rated values)
 real(wp) :: Tcutoff, t_off  ! defrost parameters
 real(wp) :: Ts, ws, RHs, ps  ! Outputs (supply conditions)
 real(wp) :: Pel, Qc, Qcs, Qcl, Qrej, Qh, Qabs, Pcomp  ! Outputs (heat and power)
@@ -129,8 +131,8 @@ real(wp) :: COP, EER, Tc, cmfr  ! Outputs (misc)
 
 
 ! Local variables
-real(wp) :: psydat(9), Twbr, Twboa, hr, hx, hs
-integer :: psymode, status
+real(wp) :: psydat(9), Twbr, Twboa, hr, hx, hs, dr
+integer :: status
 integer, parameter :: Ninstances = 1  ! Number of units
 integer :: Ni = 1  ! temporary, should use a kernel function to get the actual instance number.
 
@@ -174,11 +176,6 @@ psydat(1) = pr
 psydat(2) = Tr
 psydat(4) = RHr/100.0_wp
 psydat(6) = wr
-if (yHum == 1) then
-    psymode = 4
-else
-    psymode = 2
-endif
 if (mode==0) then 
     call MoistAirProperties(thisUnit, thisType, 1, psymode, 1, psydat, 1, status)
     ! (unit, type, si units used, psych inputs, Twb computed, inputs, warning mgmt, warning occurences)
@@ -191,14 +188,16 @@ Twbr = psydat(3)
 RHr = psydat(4)  ! RHr between 0 and 1 (not 0 and 100)
 wr = psydat(6)
 hr = psydat(7)
+dr = psydat(9)
 
 if (mode == 1) then ! compute outdoor air wet bulb
-    psydat(1) = pr
+    psydat(1) = poa
     psydat(2) = Toa
     psydat(4) = RHoa/100.0_wp
-    call MoistAirProperties(thisUnit, thisType, 1, 2, 1, psydat, 1, status)
+    psydat(6) = woa
+    call MoistAirProperties(thisUnit, thisType, 1, psymode, 1, psydat, 1, status)
     Twboa = psydat(3)
-    if (defrost_mode == -1) call SetDefrostMode()
+    if (defrost_mode == -1) call SetDefrostMode(defrost_mode)
     defrost_corr = Correction(defrost_mode, t_ld, tau)
 end if
 
@@ -211,7 +210,7 @@ else
     point(2, mode) = Toa
     point(3, mode) = Twboa
 end if
-point(4, mode) = amfr / amfrRated
+point(4, mode) = mDot / (dr * AFRrated)
 point(5, mode) = freq / freqRated
 allocate(interpolationResults(Nout))
 interpolationResults = interpolate(point(:, mode), mode, Nout)
@@ -232,22 +231,22 @@ if (Qc < Qcs) then
     ! Add warning
 endif
 
-if (amfr /= 0.0_wp) then
+if (mDot /= 0.0_wp) then
     ws = wr
     if (mode == 0) then
-        hs = hr - Qc/amfr
+        hs = hr - Qc/mDot
         hx = hr  ! useful when the following if clause is not true
         if (Qcl > 0.0_wp) then  ! compute humidity after condensation
             psydat(1) = pr
             psydat(2) = Tr
-            hx = hr - Qcl/amfr
+            hx = hr - Qcl/mDot
             psydat(7) = hx  ! enthalpy of the state (Tr, ws)
             call MoistAirProperties(thisUnit, thisType, 1, 5, 0, psydat, 1, status)  ! dry-bulb and enthalpy as inputs
             if (ErrorFound()) return
             ws = psydat(6)
         endif
     else
-        hs = hr + Qh/amfr
+        hs = hr + Qh/mDot
     end if
 else
     hs = hr
@@ -268,8 +267,8 @@ hs = psydat(7)
 
 if (mode == 0) then
     ! Re-calculate heat transfer whose value is modified if saturation occurs
-    Qcs = amfr * (hx - hs)  ! Sensible cooling rate
-    Qcl = amfr * (hr - hx)  ! Latent cooling rate
+    Qcs = mDot * (hx - hs)  ! Sensible cooling rate
+    Qcl = mDot * (hr - hx)  ! Latent cooling rate
     Qc = Qcs + Qcl  ! Total cooling rate
     Qrej = Qc + Pel  ! Heat rejection
     Qabs = 0.0_wp
@@ -285,7 +284,7 @@ else
 endif
 EER = 3.413_wp * COP
 Tc = Ts
-cmfr = amfr * (wr - ws)  ! Condensate flow rate - water balance
+cmfr = mDot * (wr - ws)  ! Condensate flow rate - water balance
 
 call SetOutputValues()
 
@@ -296,7 +295,7 @@ return
     subroutine ReadPermap
         character (len=maxPathLength) :: permapCoolPath
         character (len=maxPathLength) :: permapHeatPath
-        integer :: nTr, nTwbr, nToa, nTwboa, namfr, nfreq  ! number of entries for each variable
+        integer :: nTr, nTwbr, nToa, nTwboa, nmDot, nfreq  ! number of entries for each variable
         real(wp) :: filler(Nmax)
     
         ! Ni = GetCurrentUnit()
@@ -341,11 +340,11 @@ return
         nTr = s(Ni)%extents(1, 0)
         nTwbr = s(Ni)%extents(2, 0)
         nToa = s(Ni)%extents(3, 0)
-        namfr = s(Ni)%extents(4, 0)
+        nmDot = s(Ni)%extents(4, 0)
         nfreq = s(Ni)%extents(5, 0)
-        allocate(s(Ni)%PelcMap(nTr, nTwbr, nToa, namfr, nfreq))
-        allocate(s(Ni)%QcsMap(nTr, nTwbr, nToa, namfr, nfreq))
-        allocate(s(Ni)%QclMap(nTr, nTwbr, nToa, namfr, nfreq))
+        allocate(s(Ni)%PelcMap(nTr, nTwbr, nToa, nmDot, nfreq))
+        allocate(s(Ni)%QcsMap(nTr, nTwbr, nToa, nmDot, nfreq))
+        allocate(s(Ni)%QclMap(nTr, nTwbr, nToa, nmDot, nfreq))
         do i = 1, s(Ni)%PMClength
             read(LUcool, *) (filler(j), j = 1, Nc), Pel, Qcs, Qcl
             call SetPMvalue(s(Ni)%PelcMap, i, Pel, s(Ni)%PMClength)
@@ -358,10 +357,10 @@ return
         nTr = s(Ni)%extents(1, 1)
         nToa = s(Ni)%extents(2, 1)
         nTwboa = s(Ni)%extents(3, 1)
-        namfr = s(Ni)%extents(4, 1)
+        nmDot = s(Ni)%extents(4, 1)
         nfreq = s(Ni)%extents(5, 1)
-        allocate(s(Ni)%PelhMap(nTr, nToa, nTwboa, namfr, nfreq))
-        allocate(s(Ni)%QhMap(nTr, nToa, nTwboa, namfr, nfreq))
+        allocate(s(Ni)%PelhMap(nTr, nToa, nTwboa, nmDot, nfreq))
+        allocate(s(Ni)%QhMap(nTr, nToa, nTwboa, nmDot, nfreq))
         do i = 1, s(Ni)%PMHlength
             read(LUheat, *) (filler(j), j = 1, Nh), Pel, Qh
             call SetPMvalue(s(Ni)%PelhMap, i, Pel, s(Ni)%PMHlength)
@@ -534,7 +533,8 @@ return
     end subroutine increment
     
     
-    subroutine SetDefrostMode
+    subroutine SetDefrostMode(defrost_mode)
+        integer :: defrost_mode
         t_cy = 156.0_wp / 60.0_wp  ! hours
         t_rec = 30.0_wp / 60.0_wp  ! hours
         t_ss = t_cy - t_off - t_rec
@@ -597,7 +597,7 @@ return
 
   	    ! Tell the TRNSYS engine how this Type works
   	    call SetNumberofParameters(12)
-  	    call SetNumberofInputs(12)
+  	    call SetNumberofInputs(14)
   	    call SetNumberofDerivatives(0)
   	    call SetNumberofOutputs(20)
   	    call SetIterationMode(1)
@@ -626,8 +626,8 @@ return
 	    call SetOutputValue(1, 0.0_wp)  ! Supply air temperature
 	    call SetOutputValue(2, 0.0_wp)  ! Supply air humidity ratio
 	    call SetOutputValue(3, 0.0_wp)  ! Supply air % RH
-	    call SetOutputValue(4, 0.0_wp)  ! Supply air flow rate
-	    call SetOutputValue(5, 0.0_wp)  ! Supply air pressure
+	    call SetOutputValue(4, 0.0_wp)  ! Supply air pressure
+        call SetOutputValue(5, 0.0_wp)  ! Supply air flow rate
 	    call SetOutputValue(6, 0.0_wp)  ! Total cooling rate
 	    call SetOutputValue(7, 0.0_wp)  ! Sensible cooling rate
 	    call SetOutputValue(8, 0.0_wp)  ! Latent cooling rate
@@ -668,13 +668,13 @@ return
     
     
     subroutine ReadParameters
-        yHum = GetParameterValue(1)
+        psymode = GetParameterValue(1)
         PelcRated = GetParameterValue(2)
         QcsRated = GetParameterValue(3)
         QclRated = GetParameterValue(4)
         PelhRated = GetParameterValue(5)
         QhRated = GetParameterValue(6)
-        amfrRated = GetParameterValue(7)
+        AFRrated = GetParameterValue(7)
         freqRated = GetParameterValue(8)
         t_off = GetParameterValue(9)
         Tcutoff = GetParameterValue(10)
@@ -687,15 +687,17 @@ return
         Tr = GetInputValue(1)
         wr = GetInputValue(2)
         RHr = GetInputValue(3)
-        amfr = GetInputValue(4)
-        pr = GetInputValue(5)
-        mode = GetInputValue(6)
-        Toa = GetInputValue(7)
-        RHoa = GetInputValue(8)
+        pr = GetInputValue(4)
+        Toa = GetInputValue(5)
+        woa = GetInputValue(6)
+        RHoa = GetInputValue(7)
+        poa = GetInputValue(8)
         freq = GetInputValue(9)
-        PfanI = GetInputValue(10)
-        PfanO = GetInputValue(11)
+        mDot = GetInputValue(10)
+        mode = GetInputValue(11)
         defrost_mode = GetInputValue(12)
+        PfanI = GetInputValue(13)
+        PfanO = GetInputValue(14)
     end subroutine GetInputValues
     
     
@@ -703,8 +705,8 @@ return
         call SetOutputValue(1, Ts)  ! Outlet air temperature
         call SetOutputValue(2, ws)  ! Outlet air humidity ratio
         call SetOutputValue(3, RHs*100.0_wp)  ! Outlet air % RH
-        call SetOutputValue(4, amfr)  ! Outlet air flow rate
-        call SetOutputValue(5, ps)  ! Outlet air pressure
+        call SetOutputValue(4, ps)  ! Outlet air pressure
+        call SetOutputValue(5, mDot)  ! Outlet air flow rate
         call SetOutputValue(6, Qc)  ! Total cooling rate
         call SetOutputValue(7, Qcs)  ! Sensible cooling rate
         call SetOutputValue(8, Qcl)  ! Latent cooling rate

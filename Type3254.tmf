@@ -43,7 +43,7 @@ __
 __
 __
 __
-44
+46
 Return air temperature
 SN
 1
@@ -89,21 +89,6 @@ real
 0
 % (base 100)
 Percentage
-Return air flow rate
-SN
-1
-The air flow rate entering the indoor unit of the heat pump.
-simple
-real
-1
-+
-0.0
-+Inf
-[ ; ]
-0
-0
-kg/hr
-Flow Rate
 Return air pressure
 SN
 1
@@ -119,23 +104,6 @@ real
 0
 atm
 Pressure
-Operating mode
-SN
-3
-Setting for heating/cooling mode :
-0 = cooling mode
-1 = heating mode
-simple
-integer
-1
-+
-0
-1
-[ ; ]
-0
-0
--
-Dimensionless
 Outdoor air temperature
 SN
 1
@@ -147,7 +115,7 @@ real
 -Inf
 +Inf
 [ ; ]
-0
+0.0
 0
 C
 Temperature
@@ -170,16 +138,31 @@ Humidity mode
 SN
 3
 This parameter indicates which input to this model will be used for the moist air calculations:
-1 = humidity ratio,
-2 = percent relative humidity.
+2 = percent relative humidity,
+4 = humidity ratio.
 simple
 integer
 3
 +
-1
 2
+4
 [ ; ]
+2
+0
+-
+Dimensionless
+Outdoor air humidity ratio
+SN
 1
+The absolute humidity ratio of the air entering the outdoor unit of the heat pump.
+simple
+real
+1
++
+0.0
++Inf
+[ ; ]
+0.0
 0
 -
 Dimensionless
@@ -191,13 +174,28 @@ simple
 real
 1
 +
-0
+0.0
 100
 [ ; ]
-0
+0.0
 0
 % (base 100)
 Percentage
+Outdoor air pressure
+SN
+1
+
+simple
+real
+1
++
+0
++Inf
+[ ; ]
+1.0
+0
+atm
+Pressure
 Compressor frequency
 SN
 1
@@ -209,7 +207,7 @@ real
 0.0
 +Inf
 [ ; ]
-0
+0.0
 0
 1/S
 Frequency
@@ -243,21 +241,6 @@ real
 0
 % (base 100)
 Percentage
-Outlet air flow rate
-SN
-1
-The flow rate of dry air exiting the indoor unit of the heat pump.
-simple
-real
-2
-+
-0.0
-+Inf
-[ ; ]
-0
-0
-kg/hr
-Flow Rate
 Outlet air pressure
 SN
 1
@@ -273,6 +256,21 @@ real
 0
 atm
 Pressure
+Outlet air flow rate
+SN
+1
+The flow rate of dry air exiting the indoor unit of the heat pump.
+simple
+real
+2
++
+0.0
++Inf
+[ ; ]
+0
+0
+kg/hr
+Flow Rate
 Total cooling rate
 SN
 1
@@ -571,8 +569,8 @@ real
 [ ; ]
 1
 0
-kg/hr
-Flow Rate
+m^3/hr
+Volumetric Flow Rate
 Rated frequency
 SN
 1
@@ -588,6 +586,56 @@ real
 0
 1/S
 Frequency
+Return air mass flow rate
+SN
+1
+The air flow rate entering the indoor unit of the heat pump.
+simple
+real
+1
++
+0.0
++Inf
+[ ; ]
+0.0
+0
+kg/hr
+Flow Rate
+Operating mode
+SN
+3
+Setting for heating/cooling mode :
+0 = cooling mode
+1 = heating mode
+simple
+integer
+1
++
+0
+1
+[ ; ]
+0
+0
+-
+Dimensionless
+Defrost mode
+SN
+4
+-1 = Automatic defrost cycles
+0 = Always set to defrost mode
+1 = Always set to recovery mode
+2 = Always set to steady-state mode
+simple
+integer
+1
++
+-1
+2
+[ ; ]
+-1
+0
+-
+Dimensionless
 Indoor fan power
 SN
 1
@@ -599,7 +647,7 @@ real
 -Inf
 +Inf
 [ ; ]
-0
+0.0
 0
 kJ/hr
 Power
@@ -614,7 +662,7 @@ real
 -Inf
 +Inf
 [ ; ]
-0
+0.0
 0
 kJ/hr
 Power
@@ -693,24 +741,6 @@ integer
 0
 -
 dimensionless
-Defrost mode
-SN
-4
--1 = Automatic defrost cycles
-0 = Always set to defrost mode
-1 = Always set to recovery mode
-2 = Always set to steady-state mode
-simple
-integer
-1
-+
--1
-2
-[ ; ]
--1
-0
--
-Dimensionless
 0
 0
 0
@@ -826,7 +856,7 @@ Logical Unit - heating mode
 0
 0
 0
-11
+13
 0
 
 
