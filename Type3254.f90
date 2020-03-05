@@ -306,7 +306,7 @@ return
         call CheckPMfile(permapHeatPath)
     
         open(LUcool, file=permapCoolPath, status='old')
-        open(LUHeat, file=permapHeatPath, status='old')
+        open(LUheat, file=permapHeatPath, status='old')
     
             do i = 1, 6  ! Skip 6 first lines
                 read(LUcool, *)
@@ -593,7 +593,7 @@ return
     subroutine ExecuteSpecialCases
     
     ! All the stuff that must be done once at the beginning
-    if(getIsFirstCallofSimulation()) then
+    if(GetIsFirstCallofSimulation()) then
 
   	    ! Tell the TRNSYS engine how this Type works
   	    call SetNumberofParameters(12)
@@ -617,7 +617,7 @@ return
     endif
     
     ! Start of the first timestep: no iterations, outputs initial conditions
-    if (getIsStartTime()) then
+    if (GetIsStartTime()) then
         
         call ReadParameters()
         call GetInputValues()
@@ -653,7 +653,7 @@ return
     endif
     
     ! Parameters must be re-read - indicates another unit of this Type
-    if(getIsReReadParameters()) call ReadParameters()
+    if(GetIsReReadParameters()) call ReadParameters()
     
     ! End of timestep call (after convergence or too many iterations)
     if (GetIsEndOfTimestep()) then

@@ -43,7 +43,7 @@ __
 __
 __
 __
-13
+17
 Setpoint
 SN
 1
@@ -245,6 +245,67 @@ integer
 0
 -
 Dimensionless
+Operating mode deadband
+SN
+2
+The error signal deadband (centered on 0) in which the operating mode will keep
+its previous value if set to auto (-1).
+simple
+real
+3
++
+0
++Inf
+[ ; ]
+4.0
+0
+C
+Temperature
+Maximum oscillations number
+SN
+1
+
+simple
+integer
+3
++
+0
++Inf
+[ ; ]
+5
+0
+-
+dimensionless
+Logical Unit - cooling mode
+SN
+1
+
+simple
+integer
+3
++
+10
++Inf
+[ ; ]
+30
+0
+-
+dimensionless
+Logical Unit - heating mode
+SN
+1
+
+simple
+integer
+3
++
+10
++Inf
+[ ; ]
+31
+0
+-
+dimensionless
 0
 0
 0
@@ -294,19 +355,21 @@ Dimensionless
 0
 9
 
+Which file contains the heat pump cooling performance data?
+\\Mac\Home\Documents\Canmet\permap-generator\control_file-cooling.dat
+1
+\\Mac\Home\Documents\Canmet\permap-generator\control_file-cooling.dat
+Logical Unit - cooling mode
 
+1
 
-0
+Which file contains the heat pump heating performance data?
+\\Mac\Home\Documents\Canmet\permap-generator\control_file-heating.dat
+1
+\\Mac\Home\Documents\Canmet\permap-generator\control_file-heating.dat
+Logical Unit - heating mode
 
-
-0
-
-
-
-0
-
-
-0
+1
 
 
 
@@ -371,8 +434,8 @@ Dimensionless
 
 1
 100
--1
--1
+0
+3
 0
 
 
