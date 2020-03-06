@@ -43,7 +43,7 @@ __
 __
 __
 __
-17
+16
 Setpoint
 SN
 1
@@ -254,28 +254,13 @@ simple
 real
 3
 +
-0
+0.0
 +Inf
 [ ; ]
 4.0
 0
 C
 Temperature
-Maximum oscillations number
-SN
-1
-
-simple
-integer
-3
-+
-0
-+Inf
-[ ; ]
-5
-0
--
-dimensionless
 Logical Unit - cooling mode
 SN
 1
@@ -435,7 +420,7 @@ Logical Unit - heating mode
 1
 100
 0
-3
+2
 0
 
 

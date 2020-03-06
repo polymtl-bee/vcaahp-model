@@ -27,8 +27,9 @@
 ! --------------------------------------------------------------------------------------------------
 !  # | Variable     | Description                                   | Param. Units  | Internal Units
 ! --------------------------------------------------------------------------------------------------
-!  1 | mode_deadband| 2 = Humidity ratio as humidity input          | °C            | °C
-!  2 | Nosc_max     | Maximum number of oscillations                | -             | -
+!  1 | mode_deadband| Operating mode deadband for automatic mode    | °C            | °C
+!  2 | LUcool       | Logical Unit - cooling mode                   | -             | -
+!  3 | LUheat       | Logical Unit - heating mode                   | -             | -
 ! --------------------------------------------------------------------------------------------------
 
 ! Outputs
@@ -85,7 +86,7 @@ real(wp) :: e, es, f, fp, fi  ! Controller signals
 real(wp) :: h ! timestep
 real(wp) :: Tset_old, Tr_old, fi_old, es_old, e_old  ! Values of the previous timestep
 real(wp) :: mode_deadband  ! Parameters
-integer :: Nosc, Nosc_max, LUheat, LUcool
+integer :: LUheat, LUcool
 integer :: N, mode, prev_mode  ! Number of frequency levels, operating mode
 integer :: Nsvar = 3, Noutputs = 2  ! number of of stored variables and outputs returned by the Type
 integer :: Ni = 1, Ninstances = 1  ! temporary, should use a kernel function to get the actual instance number.
@@ -105,16 +106,16 @@ if (ErrorFound()) return
 
 e = Tset - Tr
 if (mode == -1) then
-    prev_mode = GetDynamicArrayValueLastTimestep(1)
-    Nosc = GetDynamicArrayValueLastTimestep(2)
-    if (e < 0) then
+    prev_mode = int(GetDynamicArrayValueLastTimestep(1))
+    if (e < -mode_deadband / 2.0_wp) then
         mode = 0
-    else
+    else if (e > mode_deadband / 2.0_wp) then
         mode = 1
-    end if
+    else
+        mode = prev_mode
+    endif
 end if
-call SetDynamicArrayValueThisIteration(1, mode)
-
+call SetDynamicArrayValueThisIteration(1, real(mode, wp))
 
 e = (Tset - Tr) * (2.0_wp * real(mode, wp) - 1.0_wp)  ! Error
 
@@ -290,12 +291,12 @@ return
     
     ! All the stuff that must be done once at the beginning
     if(GetIsFirstCallofSimulation()) then
-	    call SetNumberofParameters(4)
+	    call SetNumberofParameters(3)
 	    call SetNumberofInputs(11)
 	    call SetNumberofDerivatives(0)
 	    call SetNumberofOutputs(Nsvar + Noutputs)
 	    call SetIterationMode(1)
-	    call SetNumberStoredVariables(0, 2)
+	    call SetNumberStoredVariables(0, 1)
 	    call SetNumberofDiscreteControls(0)
         call SetIterationMode(2)
         h = GetSimulationTimeStep()
@@ -319,7 +320,6 @@ return
         call SetOutputValue(2, 0.0_wp)  ! Operating mode
         
         call SetDynamicArrayInitialValue(1, 0)  ! Operating mode
-        call SetDynamicArrayInitialValue(2, 5)  ! maximum oscillations number
 	    return
     endif
     
@@ -339,10 +339,9 @@ return
     
     
     subroutine ReadParameters
-        mode_deadband = jfix(GetParameterValue(1) + 0.01)
-        Nosc_max = jfix(GetParameterValue(2) + 0.01)
-        LUcool = GetParameterValue(3)
-        LUheat = GetParameterValue(4)
+        mode_deadband = GetParameterValue(1)
+        LUcool = GetParameterValue(2)
+        LUheat = GetParameterValue(3)
     end subroutine ReadParameters
     
     
