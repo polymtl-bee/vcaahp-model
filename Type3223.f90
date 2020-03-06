@@ -28,7 +28,6 @@
 !  # | Variable     | Description                                   | Param. Units  | Internal Units
 ! --------------------------------------------------------------------------------------------------
 !  1 | mode_deadband| 2 = Humidity ratio as humidity input          | °C            | °C
-!  2 | Nosc_max     | Maximum number of oscillations                | -             | -
 ! --------------------------------------------------------------------------------------------------
 
 ! Outputs
@@ -80,27 +79,16 @@ if (ErrorFound()) return
 
 e = Tset - Tr
 if (mode == -1) then
-    prev_mode = GetDynamicArrayValueLastTimestep(1)
-    Nosc = GetDynamicArrayValueLastTimestep(2)
+    prev_mode = int(GetDynamicArrayValueLastTimestep(1))
     if (e < -mode_deadband / 2.0_wp) then
         mode = 0
     else if (e > mode_deadband / 2.0_wp) then
         mode = 1
     else
-        if (mode /= prev_mode) then
-            Nosc = Nosc + 1
-        else
-            Nosc = 0
-        endif
-        if (Nosc > Nosc_max) then
-            mode = 1
-        else
-            mode = prev_mode
-        endif
-    end if
-    call SetDynamicArrayValueThisIteration(2, Nosc)
+        mode = prev_mode
+    endif
 end if
-call SetDynamicArrayValueThisIteration(1, mode)
+call SetDynamicArrayValueThisIteration(1, real(mode, wp))
 
 e = (Tset - Tr) * (2.0_wp * real(mode, wp) - 1.0_wp)  ! Error
 
@@ -185,12 +173,12 @@ return
 
     ! Very first call of simulation (initialization call)
     if(GetIsFirstCallofSimulation()) then
-	    call SetNumberofParameters(2)
+	    call SetNumberofParameters(1)
 	    call SetNumberofInputs(11)
 	    call SetNumberofDerivatives(0)
 	    call SetNumberofOutputs(Nsvar + Noutputs)
 	    call SetIterationMode(1)
-	    call SetNumberStoredVariables(0, 2)
+	    call SetNumberStoredVariables(0, 1)
 	    call SetNumberofDiscreteControls(0)
         call SetIterationMode(2)
         h = GetSimulationTimeStep()
@@ -204,7 +192,6 @@ return
         call SetOutputValue(2, 0.0_wp)  ! Operating mode
         
         call SetDynamicArrayInitialValue(1, 0)  ! Operating mode
-        call SetDynamicArrayInitialValue(2, 5)  ! maximum oscillations number
 	    return
     endif
 
@@ -214,8 +201,7 @@ return
     
     
     subroutine ReadParameters
-        mode_deadband = jfix(GetParameterValue(1) + 0.01)
-        Nosc_max = jfix(GetParameterValue(2) + 0.01)
+        mode_deadband = GetParameterValue(1)
     end subroutine ReadParameters
     
     

@@ -43,7 +43,7 @@ __
 __
 __
 __
-15
+14
 Setpoint
 SN
 1
@@ -254,28 +254,13 @@ simple
 real
 3
 +
-0
+0.0
 +Inf
 [ ; ]
 4.0
 0
-C
-Temperature
-Maximum oscillations number
-SN
-1
-
-simple
-integer
-3
-+
-0
-+Inf
-[ ; ]
-5
-0
 -
-dimensionless
+Dimensionless
 0
 0
 0
@@ -403,7 +388,7 @@ dimensionless
 1
 100
 0
-1
+0
 0
 
 
