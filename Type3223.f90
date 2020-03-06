@@ -88,7 +88,6 @@ real(wp) :: Tset_old, Tr_old, fi_old, es_old, e_old  ! Values of the previous ti
 real(wp) :: mode_deadband  ! Parameters
 integer :: LUheat, LUcool
 integer :: N, mode, prev_mode  ! Number of frequency levels, operating mode
-integer :: Nsvar = 3, Noutputs = 2  ! number of of stored variables and outputs returned by the Type
 integer :: Ni = 1, Ninstances = 1  ! temporary, should use a kernel function to get the actual instance number.
 
 integer :: thisUnit, thisType    ! unit and type numbers
@@ -259,16 +258,16 @@ return
     
     
     subroutine StoreValues
-        call SetOutputValue(Noutputs+1, e)
-        call SetOutputValue(Noutputs+2, fi)
-        call SetOutputValue(Noutputs+3, es)
+        call SetDynamicArrayValueThisIteration(2, e)
+        call SetDynamicArrayValueThisIteration(3, fi)
+        call SetDynamicArrayValueThisIteration(4, es)
     end subroutine StoreValues
     
     
     subroutine RecallStoredValues
-        e_old = GetOutputValue(Noutputs+1)
-        fi_old = GetOutputValue(Noutputs+2)
-        es_old = GetOutputValue(Noutputs+3)
+        e_old = GetDynamicArrayValueLastTimestep(2)
+        fi_old = GetDynamicArrayValueLastTimestep(3)
+        es_old = GetDynamicArrayValueLastTimestep(4)
     end subroutine RecallStoredValues
     
     
@@ -294,9 +293,9 @@ return
 	    call SetNumberofParameters(3)
 	    call SetNumberofInputs(11)
 	    call SetNumberofDerivatives(0)
-	    call SetNumberofOutputs(Nsvar + Noutputs)
+	    call SetNumberofOutputs(2)
 	    call SetIterationMode(1)
-	    call SetNumberStoredVariables(0, 1)
+	    call SetNumberStoredVariables(0, 4)
 	    call SetNumberofDiscreteControls(0)
         call SetIterationMode(2)
         h = GetSimulationTimeStep()
@@ -320,6 +319,9 @@ return
         call SetOutputValue(2, 0.0_wp)  ! Operating mode
         
         call SetDynamicArrayInitialValue(1, 0)  ! Operating mode
+        call SetDynamicArrayInitialValue(2, 0)  ! error signal
+        call SetDynamicArrayInitialValue(3, 0)  ! integral value
+        call SetDynamicArrayInitialValue(4, 0)  ! saturation error
 	    return
     endif
     
