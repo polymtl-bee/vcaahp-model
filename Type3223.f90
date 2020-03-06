@@ -11,15 +11,16 @@
 ! ------------------------------------------------------------------------------------------------------
 !  1 | Tset         | Setpoint temperature (command signal)             | °C            | °C
 !  2 | Tr           | Controlled variable                               | °C            | °C
-!  3 | onOff        | ON/OFF signal                                     | -             | -
-!  4 | fmin         | Minimum value for the frequency (control signal)  | -             | -
-!  5 | fmax         | Maximum value for the frequency (control signal)  | -             | -
-!  6 | Kc           | Gain constant                                     | any           | any
-!  7 | ti           | Integral time constant                            | h             | h
-!  8 | tt           | Tracking time constant                            | h             | h
-!  9 | b            | Proportional setpoint weight                      | -             | -
-! 10 | N            | Number of frequency levels                        | -             | -
-! 11 | mode         | 0 = cooling mode                                  | -             | -
+!  3 | Toa          | Outdoor air temperature                           | °C            | °C
+!  4 | onOff        | ON/OFF signal                                     | -             | -
+!  5 | fmin         | Minimum value for the frequency (control signal)  | -             | -
+!  6 | fmax         | Maximum value for the frequency (control signal)  | -             | -
+!  7 | Kc           | Gain constant                                     | any           | any
+!  8 | ti           | Integral time constant                            | h             | h
+!  9 | tt           | Tracking time constant                            | h             | h
+! 10 | b            | Proportional setpoint weight                      | -             | -
+! 11 | N            | Number of frequency levels                        | -             | -
+! 12 | mode         | 0 = cooling mode                                  | -             | -
 !                   | 1 = heating mode                                  |               |
 ! ------------------------------------------------------------------------------------------------------
     
@@ -79,7 +80,7 @@ use Type3223Data
 implicit none
 
 real(wp) :: time, timeStep  ! TRNSYS time and timestep
-real(wp) :: Tset, Tr ! Temperatures
+real(wp) :: Tset, Tr, Toa ! Temperatures
 real(wp) :: fsat, fq, fmin, fmax  ! Frequencies
 real(wp) :: onOff, Kc, ti, tt, b  ! Controller parameters
 real(wp) :: e, es, f, fp, fi  ! Controller signals
@@ -89,6 +90,9 @@ real(wp) :: mode_deadband  ! Parameters
 integer :: LUheat, LUcool
 integer :: N, mode, prev_mode  ! Number of frequency levels, operating mode
 integer :: Ni = 1, Ninstances = 1  ! temporary, should use a kernel function to get the actual instance number.
+integer :: AFRlevel, old_AFRlevel, zone, old_zone, AFR2level, Toalevel
+real(wp) :: AFR
+logical :: modulate
 
 integer :: thisUnit, thisType    ! unit and type numbers
 
@@ -105,7 +109,7 @@ if (ErrorFound()) return
 
 e = Tset - Tr
 if (mode == -1) then
-    prev_mode = int(GetDynamicArrayValueLastTimestep(1))
+    prev_mode = int(GetDynamicArrayValueLastTimestep(4))
     if (e < -mode_deadband / 2.0_wp) then
         mode = 0
     else if (e > mode_deadband / 2.0_wp) then
@@ -114,40 +118,78 @@ if (mode == -1) then
         mode = prev_mode
     endif
 end if
-call SetDynamicArrayValueThisIteration(1, real(mode, wp))
+call SetDynamicArrayValueThisIteration(4, real(mode, wp))
 
-e = (Tset - Tr) * (2.0_wp * real(mode, wp) - 1.0_wp)  ! Error
 
-! Default values for extra parameters
-if (tt < 0.0_wp) then
-   tt = ti
-endif
+! Get air flow rate
+old_AFRlevel = int(GetDynamicArrayValueLastTimestep(5))
+AFRlevel = GetLevel(s(Ni)%AFRerror(:, mode), s(Ni)%AFRdb(:, mode), e, old_AFRlevel, mode)
+AFR = s(Ni)%AFR(AFRlevel, mode)
+call SetDynamicArrayValueThisIteration(5, real(AFRlevel, wp))
 
-if (b < 0.0_wp) then
-   b = 1.0_wp
-endif
+! Get frequency limits
+if (fmin < 0.0_wp) then
+    Toalevel = FindLevel(s(Ni)%Toa0(:, mode), Toa, s(Ni)%nf0(mode) - 1)
+    fmin = s(Ni)%f0(Toalevel, mode)
+end if
 
-! Recall stored values
-call RecallStoredValues()
-
-if (onOff <= 0) then
-    f = 0
-else
-    fp = Kc * (b*Tset - Tr) * (2.0_wp * real(mode, wp) - 1.0_wp)  ! Proportional signal
-    if (ti > 0.0_wp) then  ! Integral action
-        fi = fi_old + Kc / ti * h * (e + e_old) / 2  ! Update the integral (using trapezoidal integration).
+if (fmax < 0.0_wp) then
+    if (mode == 0) then
+        old_zone = int(GetDynamicArrayValueLastTimestep(6))
+        zone = GetLevel(s(Ni)%Toa2, s(Ni)%Toa2, Toa, old_zone, 1)
+        call SetDynamicArrayValueThisIteration(6, real(zone, wp))
+        AFR2level = FindLevel(s(Ni)%AFR2, AFR, s(Ni)%nAFR2)
+        if (AFR2level > s(Ni)%nAFR2) AFR2level = s(Ni)%nAFR2
+        fmax = s(Ni)%f2(zone, AFR2level)
     else
-        fi = fi_old
+        fmax = s(Ni)%f2heat
+    end if
+end if
+
+! Assign fixed frequency value depending on error signal
+modulate = .false.
+if (e < s(Ni)%e_min(mode)) then
+    fq = (1 - real(mode, wp)) * fmax
+else if (e > s(Ni)%e_max(mode)) then
+    fq = real(mode, wp) * fmax
+else
+    modulate = .true.
+end if
+
+if (modulate) then
+    e = (Tset - Tr) * (2.0_wp * real(mode, wp) - 1.0_wp)  ! Error
+
+    ! Default values for extra parameters
+    if (tt < 0.0_wp) then
+       tt = ti
     endif
-    f = fp + fi  ! Unsaturated signal
-    if (tt > 0.0_wp .and. (f < fmin .or. f > fmax)) then
-        es = f - min(fmax, max(fmin, f))  ! Error with saturated signal
-        fi = fi - h * (es + es_old) / 2 / tt  ! De-saturate integral signal
-        f = fp + fi  ! Re-calculate the unsaturated signal
+
+    if (b < 0.0_wp) then
+       b = 1.0_wp
     endif
-    fsat = min(fmax, max(fmin, f))  ! Saturated signal
-    fq = (1.0_wp * floor(N * fsat)) / (1.0_wp * N)
-endif
+
+    ! Recall stored values
+    call RecallStoredValues()
+
+    if (onOff <= 0) then
+        f = 0
+    else
+        fp = Kc * (b*Tset - Tr) * (2.0_wp * real(mode, wp) - 1.0_wp)  ! Proportional signal
+        if (ti > 0.0_wp) then  ! Integral action
+            fi = fi_old + Kc / ti * h * (e + e_old) / 2  ! Update the integral (using trapezoidal integration).
+        else
+            fi = fi_old
+        endif
+        f = fp + fi  ! Unsaturated signal
+        if (tt > 0.0_wp .and. (f < fmin .or. f > fmax)) then
+            es = f - min(fmax, max(fmin, f))  ! Error with saturated signal
+            fi = fi - h * (es + es_old) / 2 / tt  ! De-saturate integral signal
+            f = fp + fi  ! Re-calculate the unsaturated signal
+        endif
+        fsat = min(fmax, max(fmin, f))  ! Saturated signal
+        fq = (1.0_wp * floor(N * fsat)) / (1.0_wp * N)
+    endif
+end if
 
 call StoreValues()
 call SetOutputValues()
@@ -257,32 +299,76 @@ return
     end subroutine SkipLines
     
     
+    function GetLevel(centers, deadbands, value, old_level, hyst_dir)
+        real(wp), intent(in) :: centers(:), deadbands(:), value
+        integer, intent(in) :: old_level, hyst_dir
+        real(wp) :: hdb(size(deadbands))
+        integer :: level, GetLevel, idx
+        hdb = deadbands / 2.0_wp  ! half deadbands
+        level = FindLevel(centers, value, size(centers))
+        idx = level
+        if (level == 1) idx = 2
+        if (level == size(centers) + 1) idx = size(centers)
+        if (value < centers(idx-1) + hdb(idx-1)) then
+            if (old_level < level .and. hyst_dir == 1) level = level - 1
+            if (old_level > level .and. hyst_dir == 0) level = level + 1
+        else if (value > centers(idx) - hdb(idx)) then
+            if (old_level > level .and. hyst_dir == 1) level = level + 1
+            if (old_level < level .and. hyst_dir == 0) level = level - 1
+        end if
+        GetLevel = level
+    end function GetLevel
+    
+    function FindLevel(array, value, extent)
+        real(wp), intent(in) :: array(:), value
+        integer, intent(in) :: extent
+        integer :: FindLevel
+        integer :: L, R, mid
+        if (value > array(extent)) then
+            FindLevel = extent + 1
+        else
+            L = 1
+            R = extent
+            do while (L < R)
+                mid = (L + R) / 2  ! L & R are integers -> automatic floor
+                if (array(mid) < value) then
+                    L = mid + 1
+                else
+                    R = mid
+                end if
+            end do
+            FindLevel = L
+        end if
+    end function FindLevel
+    
+    
     subroutine StoreValues
-        call SetDynamicArrayValueThisIteration(2, e)
-        call SetDynamicArrayValueThisIteration(3, fi)
-        call SetDynamicArrayValueThisIteration(4, es)
+        call SetDynamicArrayValueThisIteration(1, e)
+        call SetDynamicArrayValueThisIteration(2, fi)
+        call SetDynamicArrayValueThisIteration(3, es)
     end subroutine StoreValues
     
     
     subroutine RecallStoredValues
-        e_old = GetDynamicArrayValueLastTimestep(2)
-        fi_old = GetDynamicArrayValueLastTimestep(3)
-        es_old = GetDynamicArrayValueLastTimestep(4)
+        e_old = GetDynamicArrayValueLastTimestep(1)
+        fi_old = GetDynamicArrayValueLastTimestep(2)
+        es_old = GetDynamicArrayValueLastTimestep(3)
     end subroutine RecallStoredValues
     
     
     subroutine GetInputValues
         Tset = GetInputValue(1)
         Tr = GetInputValue(2)
-        onOff = GetInputValue(3)
-        fmin = GetInputValue(4)
-        fmax = GetInputValue(5)
-        Kc = GetInputValue(6)
-        ti = GetInputValue(7)
-        tt = GetInputValue(8)
-        b = GetInputValue(9)
-        N = GetInputValue(10)
-        mode = GetInputValue(11)
+        Toa = GetInputValue(3)
+        onOff = GetInputValue(4)
+        fmin = GetInputValue(5)
+        fmax = GetInputValue(6)
+        Kc = GetInputValue(7)
+        ti = GetInputValue(8)
+        tt = GetInputValue(9)
+        b = GetInputValue(10)
+        N = GetInputValue(11)
+        mode = GetInputValue(12)
     end subroutine GetInputValues
     
 
@@ -291,11 +377,11 @@ return
     ! All the stuff that must be done once at the beginning
     if(GetIsFirstCallofSimulation()) then
 	    call SetNumberofParameters(3)
-	    call SetNumberofInputs(11)
+	    call SetNumberofInputs(12)
 	    call SetNumberofDerivatives(0)
 	    call SetNumberofOutputs(2)
 	    call SetIterationMode(1)
-	    call SetNumberStoredVariables(0, 4)
+	    call SetNumberStoredVariables(0, 6)
 	    call SetNumberofDiscreteControls(0)
         call SetIterationMode(2)
         h = GetSimulationTimeStep()
@@ -318,10 +404,12 @@ return
 	    call SetOutputValue(1, 0.0_wp)  ! Normalized frequency
         call SetOutputValue(2, 0.0_wp)  ! Operating mode
         
-        call SetDynamicArrayInitialValue(1, 0)  ! Operating mode
-        call SetDynamicArrayInitialValue(2, 0)  ! error signal
-        call SetDynamicArrayInitialValue(3, 0)  ! integral value
-        call SetDynamicArrayInitialValue(4, 0)  ! saturation error
+        call SetDynamicArrayInitialValue(1, 0)  ! error signal
+        call SetDynamicArrayInitialValue(2, 0)  ! integral value
+        call SetDynamicArrayInitialValue(3, 0)  ! saturation error
+        call SetDynamicArrayInitialValue(4, 0)  ! Operating mode
+        call SetDynamicArrayInitialValue(5, 1.0_wp)  ! Air flow rate level
+        call SetDynamicArrayInitialValue(6, 1.0_wp)  ! Outdoor temperature zone
 	    return
     endif
     

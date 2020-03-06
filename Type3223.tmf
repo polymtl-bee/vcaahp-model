@@ -43,7 +43,7 @@ __
 __
 __
 __
-16
+17
 Setpoint
 SN
 1
@@ -63,6 +63,21 @@ Command signal
 SN
 1
 Temperature to be controlled (typically the indoor temperature).
+simple
+real
+1
++
+-Inf
++Inf
+[ ; ]
+0
+0
+C
+Temperature
+Outdoor temperature
+SN
+1
+
 simple
 real
 1
@@ -97,7 +112,7 @@ simple
 real
 1
 +
-0
+-Inf
 +Inf
 [ ; ]
 0
@@ -112,7 +127,7 @@ simple
 real
 1
 +
-0
+-Inf
 +Inf
 [ ; ]
 1
@@ -406,7 +421,7 @@ Logical Unit - heating mode
 0
 0
 0
-10
+11
 0
 
 
