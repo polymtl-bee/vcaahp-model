@@ -59,7 +59,7 @@ type Type3223DataStruct
     real(wp), allocatable :: AFR(:, :), AFRerror(:, :), AFRdb(:, :)
     real(wp), allocatable :: f0(:, :), Toa0(:, :)
     real(wp), allocatable :: f2(:, :), AFR2(:), Toa2(:), db2(:)
-    real(wp) :: f2heat
+    real(wp) :: f2heat, t_boost_max, f1f2
 
 end type Type3223DataStruct
 
@@ -79,7 +79,7 @@ use Type3223Data
 
 implicit none
 
-real(wp) :: time, timeStep  ! TRNSYS time and timestep
+real(wp) :: time, dt  ! TRNSYS time and timestep
 real(wp) :: Tset, Tr, Toa ! Temperatures
 real(wp) :: fsat, fq, fmin, fmax  ! Frequencies
 real(wp) :: onOff, Kc, ti, tt, b  ! Controller parameters
@@ -91,8 +91,8 @@ integer :: LUheat, LUcool
 integer :: N, mode, prev_mode  ! Number of frequency levels, operating mode
 integer :: Ni = 1, Ninstances = 1  ! temporary, should use a kernel function to get the actual instance number.
 integer :: AFRlevel, old_AFRlevel, zone, old_zone, AFR2level, Toalevel
-real(wp) :: AFR
-logical :: modulate
+real(wp) :: AFR, t_boost
+logical :: modulate, fmaxBoost
 
 integer :: thisUnit, thisType    ! unit and type numbers
 
@@ -133,6 +133,7 @@ if (fmin < 0.0_wp) then
     fmin = s(Ni)%f0(Toalevel, mode)
 end if
 
+fmaxBoost = .false.
 if (fmax < 0.0_wp) then
     if (mode == 0) then
         old_zone = int(GetDynamicArrayValueLastTimestep(6))
@@ -140,7 +141,12 @@ if (fmax < 0.0_wp) then
         call SetDynamicArrayValueThisIteration(6, real(zone, wp))
         AFR2level = FindLevel(s(Ni)%AFR2, AFR, s(Ni)%nAFR2)
         if (AFR2level > s(Ni)%nAFR2) AFR2level = s(Ni)%nAFR2
-        fmax = s(Ni)%f2(zone, AFR2level)
+        if (t_boost < s(Ni)%t_boost_max) then
+            fmax = s(Ni)%f2(zone, AFR2level)
+        else
+            fmax = s(Ni)%f2(zone, AFR2level) * s(Ni)%f1f2
+        end if
+        fmaxBoost = .true.
     else
         fmax = s(Ni)%f2heat
     end if
@@ -160,13 +166,8 @@ if (modulate) then
     e = (Tset - Tr) * (2.0_wp * real(mode, wp) - 1.0_wp)  ! Error
 
     ! Default values for extra parameters
-    if (tt < 0.0_wp) then
-       tt = ti
-    endif
-
-    if (b < 0.0_wp) then
-       b = 1.0_wp
-    endif
+    if (tt < 0.0_wp) tt = ti
+    if (b < 0.0_wp) b = 1.0_wp
 
     ! Recall stored values
     call RecallStoredValues()
@@ -190,6 +191,12 @@ if (modulate) then
         fq = (1.0_wp * floor(N * fsat)) / (1.0_wp * N)
     endif
 end if
+
+if (abs(fq - fmax) < 0.001_wp .and. fmaxBoost) then
+    t_boost = t_boost + dt
+else
+    t_boost = 0.0_wp
+endif
 
 call StoreValues()
 call SetOutputValues()
@@ -253,6 +260,8 @@ return
         read(LUh, *) s(Ni)%f2heat
         close(LUh)
             call SkipLines(LUcool, 3)
+        read(LUc, *) s(Ni)%t_boost_max, s(Ni)%f1f2
+            call SkipLines(LUcool, 1)
         read(LUc, *) s(Ni)%nZones, s(Ni)%nAFR2
             call SkipLines(LUcool, 6)
         allocate(s(Ni)%Toa2(s(Ni)%nZones))
@@ -381,7 +390,7 @@ return
 	    call SetNumberofDerivatives(0)
 	    call SetNumberofOutputs(2)
 	    call SetIterationMode(1)
-	    call SetNumberStoredVariables(0, 6)
+	    call SetNumberStoredVariables(0, 7)
 	    call SetNumberofDiscreteControls(0)
         call SetIterationMode(2)
         h = GetSimulationTimeStep()
@@ -404,12 +413,13 @@ return
 	    call SetOutputValue(1, 0.0_wp)  ! Normalized frequency
         call SetOutputValue(2, 0.0_wp)  ! Operating mode
         
-        call SetDynamicArrayInitialValue(1, 0)  ! error signal
-        call SetDynamicArrayInitialValue(2, 0)  ! integral value
-        call SetDynamicArrayInitialValue(3, 0)  ! saturation error
-        call SetDynamicArrayInitialValue(4, 0)  ! Operating mode
+        call SetDynamicArrayInitialValue(1, 0.0_wp)  ! error signal
+        call SetDynamicArrayInitialValue(2, 0.0_wp)  ! integral value
+        call SetDynamicArrayInitialValue(3, 0.0_wp)  ! saturation error
+        call SetDynamicArrayInitialValue(4, 0.0_wp)  ! Operating mode
         call SetDynamicArrayInitialValue(5, 1.0_wp)  ! Air flow rate level
         call SetDynamicArrayInitialValue(6, 1.0_wp)  ! Outdoor temperature zone
+        call SetDynamicArrayInitialValue(7, 0.0_wp)  ! Boost frequency operation time
 	    return
     endif
     
@@ -444,7 +454,7 @@ return
     
     subroutine GetTRNSYSvariables
         time = GetSimulationTime()
-        timestep = GetSimulationTimeStep()
+        dt = GetSimulationTimeStep()
         thisUnit = GetCurrentUnit()
         thisType = GetCurrentType()
     end subroutine GetTRNSYSvariables
