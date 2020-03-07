@@ -104,6 +104,21 @@ real
 0
 atm
 Pressure
+Return air mass flow rate
+SN
+1
+The air flow rate entering the indoor unit of the heat pump.
+simple
+real
+1
++
+0.0
++Inf
+[ ; ]
+0.0
+0
+kg/hr
+Flow Rate
 Outdoor air temperature
 SN
 1
@@ -586,21 +601,22 @@ real
 0
 1/S
 Frequency
-Return air mass flow rate
+Normalized return air flow rate
 SN
-1
-The air flow rate entering the indoor unit of the heat pump.
+2
+To be provided by the controller.
+If negative, the return air mass flow rate input will be used instead
 simple
 real
 1
 +
-0.0
+-Inf
 +Inf
 [ ; ]
-0.0
+-1
 0
-kg/hr
-Flow Rate
+-
+Dimensionless
 Operating mode
 SN
 3
@@ -632,10 +648,25 @@ integer
 -1
 2
 [ ; ]
--1
+2
 0
 -
 Dimensionless
+Recovery penalty
+SN
+1
+
+simple
+real
+1
++
+0.0
++Inf
+[ ; ]
+0.0
+0
+-
+dimensionless
 Indoor fan power
 SN
 1
@@ -666,36 +697,6 @@ real
 0
 kJ/hr
 Power
-Defrost duration
-SN
-1
-
-simple
-real
-3
-+
-0
-0.5
-[ ; ]
-0.1
-0
-hr
-Time
-Defrost cutoff temperature
-SN
-1
-
-simple
-real
-3
-+
--Inf
-+Inf
-[ ; ]
-6
-0
-C
-Temperature
 Logical Unit - cooling mode
 SN
 1
@@ -856,7 +857,7 @@ Logical Unit - heating mode
 0
 0
 0
-13
+15
 0
 
 
@@ -870,7 +871,7 @@ Logical Unit - heating mode
 1
 100
 0
-11
+9
 0
 
 

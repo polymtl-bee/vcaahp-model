@@ -6,23 +6,27 @@
 
 
 ! Inputs
-! ------------------------------------------------------------------------------------------------------
-!  # | Variable     | Description                                       | Input Units   | Internal Units
-! ------------------------------------------------------------------------------------------------------
-!  1 | Tset         | Setpoint temperature (command signal)             | °C            | °C
-!  2 | Tr           | Controlled variable                               | °C            | °C
-!  3 | Toa          | Outdoor air temperature                           | °C            | °C
-!  4 | onOff        | ON/OFF signal                                     | -             | -
-!  5 | fmin         | Minimum value for the frequency (control signal)  | -             | -
-!  6 | fmax         | Maximum value for the frequency (control signal)  | -             | -
-!  7 | Kc           | Gain constant                                     | any           | any
-!  8 | ti           | Integral time constant                            | h             | h
-!  9 | tt           | Tracking time constant                            | h             | h
-! 10 | b            | Proportional setpoint weight                      | -             | -
-! 11 | N            | Number of frequency levels                        | -             | -
-! 12 | mode         | 0 = cooling mode                                  | -             | -
-!                   | 1 = heating mode                                  |               |
-! ------------------------------------------------------------------------------------------------------
+! --------------------------------------------------------------------------------------------------
+!  # | Variable     | Description                                   | Input Units   | Internal Units
+! --------------------------------------------------------------------------------------------------
+!  1 | Tset         | Setpoint temperature (command signal)         | °C            | °C
+!  2 | Tr           | Controlled variable                           | °C            | °C
+!  3 | Toa          | Outdoor air temperature                       | °C            | °C
+!  4 | onOff        | ON/OFF signal                                 | -             | -
+!  5 | fmin         | Minimum value for the output frequency        | -             | -
+!  6 | fmax         | Maximum value for the output frequency        | -             | -
+!  7 | Kc           | Gain constant                                 | any           | any
+!  8 | ti           | Integral time constant                        | h             | h
+!  9 | tt           | Tracking time constant                        | h             | h
+! 10 | b            | Proportional setpoint weight                  | -             | -
+! 11 | N            | Number of frequency levels                    | -             | -
+! 12 | mode         | 0 = cooling mode                              | -             | -
+!                   | 1 = heating mode                              |               |
+! 13 | defrost_mode |-1 = defrost cycles (normal behaviour)         | -             | -
+!                   | 0 = defrost (off) mode                        |               |
+!                   | 1 = recovery mode (transient)                 |               |
+!                   | 2 = steady-state mode                         |               |
+! --------------------------------------------------------------------------------------------------
     
 ! Parameters
 ! --------------------------------------------------------------------------------------------------
@@ -34,13 +38,17 @@
 ! --------------------------------------------------------------------------------------------------
 
 ! Outputs
-! ------------------------------------------------------------------------------------------------------
-!  # | Variable     | Description                                       | Output  Units | Internal Units
-! ------------------------------------------------------------------------------------------------------
-!  1 | f            | Normalized frequency                              | -             | -
-!  2 | mode         | 0 = cooling mode                                  | -             | -
-!                   | 1 = heating mode                                  |               |
-! ------------------------------------------------------------------------------------------------------
+! --------------------------------------------------------------------------------------------------
+!  # | Variable     | Description                                   | Output  Units | Internal Units
+! --------------------------------------------------------------------------------------------------
+!  1 | fq           | Normalized frequency (control signal)         | -             | -
+!  2 | AFR          | Normalized air flow rate                      | -             | -
+!  3 | mode         | 0 = cooling mode                              | -             | -
+!                   | 1 = heating mode                              |               |
+!  4 | defrost_mode | 0 = defrost (off) mode                        |               |
+!                   | 1 = recovery mode (transient)                 |               |
+!                   | 2 = steady-state mode                         |               |
+! --------------------------------------------------------------------------------------------------
     
 ! Author: Gregor Strugala
 
@@ -53,13 +61,17 @@ implicit none
 
 type Type3223DataStruct
     
-    ! Parameters
+    ! Frequency limitation parameters
     real(wp) :: e_min(0:1), e_max(0:1)
     integer :: nAFR(0:1), nAFRboost(0:1), nf0(0:1), nZones, nAFR2
     real(wp), allocatable :: AFR(:, :), AFRerror(:, :), AFRdb(:, :)
     real(wp), allocatable :: f0(:, :), Toa0(:, :)
     real(wp), allocatable :: f2(:, :), AFR2(:), Toa2(:), db2(:)
     real(wp) :: f2heat, t_boost_max, f1f2
+    
+    ! Defrost parameters
+    real(wp) :: Tcutoff, t_cy, t_off, t_rec
+    
 
 end type Type3223DataStruct
 
@@ -93,6 +105,8 @@ integer :: Ni = 1, Ninstances = 1  ! temporary, should use a kernel function to 
 integer :: AFRlevel, old_AFRlevel, zone, old_zone, AFR2level, Toalevel
 real(wp) :: AFR, t_boost
 logical :: modulate, fmaxBoost
+integer :: defrost_mode
+real(wp) :: t_ld, tau, t_uc, t_oc, recov_penalty
 
 integer :: thisUnit, thisType    ! unit and type numbers
 
@@ -169,8 +183,7 @@ if (modulate) then
     if (tt < 0.0_wp) tt = ti
     if (b < 0.0_wp) b = 1.0_wp
 
-    ! Recall stored values
-    call RecallStoredValues()
+    call RecallStoredPIvalues()
 
     if (onOff <= 0) then
         f = 0
@@ -190,6 +203,7 @@ if (modulate) then
         fsat = min(fmax, max(fmin, f))  ! Saturated signal
         fq = (1.0_wp * floor(N * fsat)) / (1.0_wp * N)
     endif
+    call StorePIvalues()
 end if
 
 if (abs(fq - fmax) < 0.001_wp .and. fmaxBoost) then
@@ -198,7 +212,9 @@ else
     t_boost = 0.0_wp
 endif
 
-call StoreValues()
+if (defrost_mode == -1) call SetDefrostMode(defrost_mode)
+recov_penalty = RecoveryPenalty(defrost_mode, t_ld, tau)
+
 call SetOutputValues()
 
 return
@@ -258,6 +274,8 @@ return
         read(LUh, *) (s(Ni)%f0(i, 1), i = 1, s(Ni)%nf0(1))
             call SkipLines(LUheat, 2)
         read(LUh, *) s(Ni)%f2heat
+            call SkipLines(LUheat, 7)
+        read(LUh, *) s(Ni)%Tcutoff, s(Ni)%t_cy, s(Ni)%t_off, s(Ni)%t_rec
         close(LUh)
             call SkipLines(LUcool, 3)
         read(LUc, *) s(Ni)%t_boost_max, s(Ni)%f1f2
@@ -351,19 +369,83 @@ return
     end function FindLevel
     
     
-    subroutine StoreValues
+    subroutine SetDefrostMode(defrost_mode)
+        integer :: defrost_mode
+        real(wp) :: Tcutoff, t_cy, t_off, t_rec, t_ss
+        t_cy = s(Ni)%t_cy
+        t_off = s(Ni)%t_off
+        t_rec = s(Ni)%t_rec
+        t_ss = t_cy - t_off - t_rec
+        tau = t_rec - t_off
+
+        call RecallStoredDefrostValues()
+        
+        if (Toa < Tcutoff) then
+            t_uc = t_uc + dt
+        else
+            t_oc = t_oc + dt
+        end if
+    
+        if (t_ld < t_rec) then
+            defrost_mode = 1
+        else if (t_ld < t_rec + t_ss) then
+            defrost_mode = 2
+        else if (t_uc < t_oc) then
+            t_uc = 0.0_wp
+            t_oc = 0.0_wp
+            t_ld = t_rec - dt
+            defrost_mode = 2
+        else if (t_ld < t_cy) then
+            defrost_mode = 0
+        else
+            t_ld = -dt
+            t_uc = 0.0_wp
+            t_oc = 0.0_wp
+            defrost_mode = 1
+        end if
+        t_ld = t_ld + dt
+        
+        call StoreDefrostValues()
+    end subroutine SetDefrostMode
+    
+    
+    subroutine StorePIvalues
         call SetDynamicArrayValueThisIteration(1, e)
         call SetDynamicArrayValueThisIteration(2, fi)
         call SetDynamicArrayValueThisIteration(3, es)
-    end subroutine StoreValues
+    end subroutine StorePIvalues
     
     
-    subroutine RecallStoredValues
+    subroutine RecallStoredPIvalues
         e_old = GetDynamicArrayValueLastTimestep(1)
         fi_old = GetDynamicArrayValueLastTimestep(2)
         es_old = GetDynamicArrayValueLastTimestep(3)
-    end subroutine RecallStoredValues
+    end subroutine RecallStoredPIvalues
     
+    
+    subroutine StoreDefrostValues
+        call SetDynamicArrayValueThisIteration(8, t_ld)
+        call SetDynamicArrayValueThisIteration(9, t_uc)
+        call SetDynamicArrayValueThisIteration(10, t_oc)
+    end subroutine StoreDefrostValues
+    
+    
+    subroutine RecallStoredDefrostValues
+        t_ld = GetDynamicArrayValueLastTimestep(8)
+        t_uc = GetDynamicArrayValueLastTimestep(9)
+        t_oc = GetDynamicArrayValueLastTimestep(10)
+    end subroutine RecallStoredDefrostValues
+    
+    function RecoveryPenalty(defrost_mode, t_ld, tau)
+        integer, intent(in) :: defrost_mode
+        real(wp), intent(in) :: t_ld, tau
+        real(wp) :: recoveryPenalty
+        if (defrost_mode == 1) then
+            recoveryPenalty = 1.0_wp - exp(-1-t_ld/tau)
+        else
+            recoveryPenalty = 0.0_wp
+        end if
+    end function RecoveryPenalty
     
     subroutine GetInputValues
         Tset = GetInputValue(1)
@@ -378,6 +460,7 @@ return
         b = GetInputValue(10)
         N = GetInputValue(11)
         mode = GetInputValue(12)
+        defrost_mode = GetInputValue(13)
     end subroutine GetInputValues
     
 
@@ -386,11 +469,11 @@ return
     ! All the stuff that must be done once at the beginning
     if(GetIsFirstCallofSimulation()) then
 	    call SetNumberofParameters(3)
-	    call SetNumberofInputs(12)
+	    call SetNumberofInputs(13)
 	    call SetNumberofDerivatives(0)
-	    call SetNumberofOutputs(2)
+	    call SetNumberofOutputs(5)
 	    call SetIterationMode(1)
-	    call SetNumberStoredVariables(0, 7)
+	    call SetNumberStoredVariables(0, 10)
 	    call SetNumberofDiscreteControls(0)
         call SetIterationMode(2)
         h = GetSimulationTimeStep()
@@ -411,7 +494,10 @@ return
         call ReadParameters()
         call GetInputValues()
 	    call SetOutputValue(1, 0.0_wp)  ! Normalized frequency
-        call SetOutputValue(2, 0.0_wp)  ! Operating mode
+        call SetOutputValue(2, 0.0_wp)  ! Normalized air flow rate
+        call SetOutputValue(3, 0.0_wp)  ! Operating mode
+        call SetOutputValue(4, 0.0_wp)  ! Defrost mode
+        call SetOutputValue(5, 0.0_wp)  ! Defrost recovery penalty
         
         call SetDynamicArrayInitialValue(1, 0.0_wp)  ! error signal
         call SetDynamicArrayInitialValue(2, 0.0_wp)  ! integral value
@@ -420,6 +506,9 @@ return
         call SetDynamicArrayInitialValue(5, 1.0_wp)  ! Air flow rate level
         call SetDynamicArrayInitialValue(6, 1.0_wp)  ! Outdoor temperature zone
         call SetDynamicArrayInitialValue(7, 0.0_wp)  ! Boost frequency operation time
+        call SetDynamicArrayInitialValue(8, 0.0_wp)  ! Boost frequency operation time
+        call SetDynamicArrayInitialValue(9, 0.0_wp)  ! Boost frequency operation time
+        call SetDynamicArrayInitialValue(10, 0.0_wp)  ! Boost frequency operation time
 	    return
     endif
     
@@ -447,7 +536,10 @@ return
     
     subroutine SetOutputValues
         call SetOutputValue(1, fq)  ! Normalized saturated quantized frequency
-        call SetOutputValue(2, real(mode, wp))  ! Operating mode
+        call SetOutputValue(2, AFR)  ! Normalized air flow rate
+        call SetOutputValue(3, real(mode, wp))  ! Operating mode
+        call SetOutputValue(4, real(defrost_mode, wp))  ! Defrost mode
+        call SetOutputValue(5, recov_penalty)  ! Defrost recovery penalty
         return
     end subroutine SetOutputValues
     

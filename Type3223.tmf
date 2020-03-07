@@ -43,7 +43,7 @@ __
 __
 __
 __
-17
+21
 Setpoint
 SN
 1
@@ -208,7 +208,7 @@ real
 0
 +Inf
 [ ; ]
-0
+0.0
 0
 -
 Dimensionless
@@ -244,6 +244,21 @@ integer
 0
 -
 Dimensionless
+Normalized air flow rate
+SN
+1
+
+simple
+real
+2
++
+0
++Inf
+[ ; ]
+0.0
+0
+-
+dimensionless
 Operating mode
 SN
 2
@@ -303,6 +318,51 @@ integer
 +Inf
 [ ; ]
 31
+0
+-
+dimensionless
+Defrost mode
+SN
+1
+
+simple
+integer
+2
++
+0
+2
+[ ; ]
+2
+0
+-
+dimensionless
+Recovery penalty
+SN
+1
+
+simple
+real
+2
++
+0.0
++Inf
+[ ; ]
+0.0
+0
+-
+dimensionless
+Defrost mode
+SN
+1
+
+simple
+integer
+1
++
+-1
+2
+[ ; ]
+-1
 0
 -
 dimensionless
@@ -421,14 +481,14 @@ Logical Unit - heating mode
 0
 0
 0
-11
+12
 0
 
 
 1
 100
 0
-1
+4
 0
 
 

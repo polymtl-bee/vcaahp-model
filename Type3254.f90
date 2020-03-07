@@ -13,20 +13,21 @@
 !  2 | wr           | Inlet (return) air humidity ratio             | -             | -
 !  3 | RHr          | Inlet (return) air relative humidity          | % (base 100)  | -
 !  4 | pr           | Inlet (return) air pressure                   | atm           | atm
-!  5 | Toa          | Outdoor air dry bulb temperature              | °C            | °C
-!  6 | woa          | Outdoor air humidity ratio                    | -             | -
-!  7 | RHoa         | Outdoor air realtive humidity                 | % (base 100)  | -
-!  8 | poa          | Outdoor air pressure                          | atm           | atm
-!  9 | freq         | Compressor frequency                          | 1/s           | 1/s
-! 10 | mDot         | Inlet (return) air mass flow rate             | kg/h          | kg/h
-! 11 | mode         | 0 = cooling mode                              | -             | -
+!  5 | mDot         | Inlet (return) air mass flow rate             | kg/h          | kg/h
+!  6 | Toa          | Outdoor air dry bulb temperature              | °C            | °C
+!  7 | woa          | Outdoor air humidity ratio                    | -             | -
+!  8 | RHoa         | Outdoor air realtive humidity                 | % (base 100)  | -
+!  9 | poa          | Outdoor air pressure                          | atm           | atm
+! 10 | freq         | Compressor frequency                          | 1/s           | 1/s
+! 11 | AFR          | Inlet (return) normalized air flow rate       | -             | -
+! 12 | mode         | 0 = cooling mode                              | -             | -
 !                   | 1 = heating mode                              |               |
-! 12 | defrost_mode |-1 = defrost cycles (normal behaviour)         | -             | -
-!                   | 0 = defrost (off) mode                        |               |
+! 13 | defrost_mode | 0 = defrost (off) mode                        | -             | -
 !                   | 1 = recovery mode (transient)                 |               |
 !                   | 2 = steady-state mode                         |               |
-! 13 | PfanI        | Indoor fan power                              | kJ/h          | kJ/h
-! 14 | PfanO        | Outdoor fan power                             | kJ/h          | kJ/h
+! 14 | recov_penalty| Penalty factor for defrost recovery mode      | -             | -
+! 15 | PfanI        | Indoor fan power                              | kJ/h          | kJ/h
+! 16 | PfanO        | Outdoor fan power                             | kJ/h          | kJ/h
 ! --------------------------------------------------------------------------------------------------
 
 ! Parameters
@@ -42,10 +43,8 @@
 !  6 | QhRated      | Rated heating capacity                        | kJ/h          | kJ/h
 !  7 | AFRrated     | Rated inlet air mass flow rate                | kg/h          | kg/h
 !  8 | freqRated    | Rated frequency                               | 1/s           | 1/s
-!  9 | t_defrost    | Defrost duration during a cycle               | hr            | hr
-! 10 | Tcutoff      | Defrost cutoff temperature                    | °C            | °C
-! 11 | LUcool       | Logical Unit - cooling mode                   | -             | -
-! 12 | LUheat       | Logical Unit - heating mode                   | -             | -
+!  9 | LUcool       | Logical Unit - cooling mode                   | -             | -
+! 10 | LUheat       | Logical Unit - heating mode                   | -             | -
 ! --------------------------------------------------------------------------------------------------
 
 ! Outputs
@@ -121,10 +120,10 @@ real(wp) :: time, dt  ! TRNSYS time and timestep
 
 ! Proforma variables
 real(wp) :: Tr, wr, RHr, mDot, pr, Toa, woa, RHoa, poa, freq, PfanI, PfanO  ! Inputs
-integer :: mode  ! operating mode
+integer :: mode, defrost_mode = 1
+real(wp) :: recov_penalty, AFR
 integer :: psymode, LUcool, LUheat  ! Parameters
 real(wp) :: PelcRated, QcsRated, QclRated, PelhRated, QhRated, AFRrated, freqRated  ! Parameters (rated values)
-real(wp) :: Tcutoff, t_off  ! defrost parameters
 real(wp) :: Ts, ws, RHs, ps  ! Outputs (supply conditions)
 real(wp) :: Pel, Qc, Qcs, Qcl, Qrej, Qh, Qabs, Pcomp  ! Outputs (heat and power)
 real(wp) :: COP, EER, Tc, cmfr  ! Outputs (misc)
@@ -137,13 +136,6 @@ integer, parameter :: Ninstances = 1  ! Number of units
 integer :: Ni = 1  ! temporary, should use a kernel function to get the actual instance number.
 
 ! Defrost variables
-integer :: defrost_mode = 1
-real(wp) :: t_uc = 0, t_oc = 0  ! time under/over cutoff temperature
-real(wp) :: t_cy  ! duration of a full defrost cycle
-real(wp) :: t_rec  ! time between defrost and steady-state (recovery mode)
-real(wp) :: t_ss  ! steady-state time in a cycle
-real(wp) :: tau  ! time constant for the recovery penalty
-real(wp) :: t_ld  ! time since last defrost
 real(wp) :: defrost_corr(2) = 0.0_wp  ! correction factors
 
 ! Performance map reading variables
@@ -189,6 +181,7 @@ RHr = psydat(4)  ! RHr between 0 and 1 (not 0 and 100)
 wr = psydat(6)
 hr = psydat(7)
 dr = psydat(9)
+if (AFR >= 0) mDot = AFR * dr
 
 if (mode == 1) then ! compute outdoor air wet bulb
     psydat(1) = poa
@@ -197,8 +190,7 @@ if (mode == 1) then ! compute outdoor air wet bulb
     psydat(6) = woa
     call MoistAirProperties(thisUnit, thisType, 1, psymode, 1, psydat, 1, status)
     Twboa = psydat(3)
-    if (defrost_mode == -1) call SetDefrostMode(defrost_mode)
-    defrost_corr = Correction(defrost_mode, t_ld, tau)
+    defrost_corr = Correction(defrost_mode, recov_penalty)
 end if
 
 ! Interpolate using wet bulb
@@ -533,54 +525,13 @@ return
     end subroutine increment
     
     
-    subroutine SetDefrostMode(defrost_mode)
-        integer :: defrost_mode
-        t_cy = 156.0_wp / 60.0_wp  ! hours
-        t_rec = 30.0_wp / 60.0_wp  ! hours
-        t_ss = t_cy - t_off - t_rec
-        tau = t_rec - t_off
-        t_ld = GetDynamicArrayValueLastTimestep(1)
-        t_uc = GetDynamicArrayValueLastTimestep(2)
-        t_oc = GetDynamicArrayValueLastTimestep(3)
-        
-        if (Toa < Tcutoff) then
-            t_uc = t_uc + dt
-        else
-            t_oc = t_oc + dt
-        end if
-    
-        if (t_ld < t_rec) then
-            defrost_mode = 1
-        else if (t_ld < t_rec + t_ss) then
-            defrost_mode = 2
-        else if (t_uc < t_oc) then
-            t_uc = 0.0_wp
-            t_oc = 0.0_wp
-            t_ld = t_rec - dt
-            defrost_mode = 2
-        else if (t_ld < t_cy) then
-            defrost_mode = 0
-        else
-            t_ld = -dt
-            t_uc = 0.0_wp
-            t_oc = 0.0_wp
-            defrost_mode = 1
-        end if
-        t_ld = t_ld + dt
-        call SetDynamicArrayValueThisIteration(1, t_ld)
-        call SetDynamicArrayValueThisIteration(2, t_uc)
-        call SetDynamicArrayValueThisIteration(3, t_oc)
-    end subroutine SetDefrostMode
-    
-    
-    function Correction(defrost_mode, t_ld, tau)
+    function Correction(defrost_mode, recov_penalty)
         integer, intent(in) :: defrost_mode
-        real(wp), intent(in) :: t_ld, tau
-        real(wp) :: correction(2), recov_penalty
+        real(wp), intent(in) :: recov_penalty
+        real(wp) :: correction(2)
         if (defrost_mode == 0) then
             correction = (/0.6_wp, 0.0_wp/)
         else if (defrost_mode == 1) then
-            recov_penalty = 1.0_wp - exp(-1-t_ld/tau)
             correction = (/1.0_wp, recov_penalty/)
         else if (defrost_mode == 2) then
             correction = (/1.0_wp, 1.0_wp/)
@@ -596,8 +547,8 @@ return
     if(GetIsFirstCallofSimulation()) then
 
   	    ! Tell the TRNSYS engine how this Type works
-  	    call SetNumberofParameters(12)
-  	    call SetNumberofInputs(14)
+  	    call SetNumberofParameters(10)
+  	    call SetNumberofInputs(16)
   	    call SetNumberofDerivatives(0)
   	    call SetNumberofOutputs(20)
   	    call SetIterationMode(1)
@@ -676,10 +627,8 @@ return
         QhRated = GetParameterValue(6)
         AFRrated = GetParameterValue(7)
         freqRated = GetParameterValue(8)
-        t_off = GetParameterValue(9)
-        Tcutoff = GetParameterValue(10)
-        LUcool = GetParameterValue(11)
-        LUheat = GetParameterValue(12)
+        LUcool = GetParameterValue(9)
+        LUheat = GetParameterValue(10)
     end subroutine ReadParameters
     
     
@@ -688,16 +637,18 @@ return
         wr = GetInputValue(2)
         RHr = GetInputValue(3)
         pr = GetInputValue(4)
-        Toa = GetInputValue(5)
-        woa = GetInputValue(6)
-        RHoa = GetInputValue(7)
-        poa = GetInputValue(8)
-        freq = GetInputValue(9)
-        mDot = GetInputValue(10)
-        mode = GetInputValue(11)
-        defrost_mode = GetInputValue(12)
-        PfanI = GetInputValue(13)
-        PfanO = GetInputValue(14)
+        mDot = GetInputValue(5)
+        Toa = GetInputValue(6)
+        woa = GetInputValue(7)
+        RHoa = GetInputValue(8)
+        poa = GetInputValue(9)
+        freq = GetInputValue(10)
+        AFR = GetInputValue(11)
+        mode = GetInputValue(12)
+        defrost_mode = GetInputValue(13)
+        recov_penalty = GetInputValue(14)
+        PfanI = GetInputValue(15)
+        PfanO = GetInputValue(16)
     end subroutine GetInputValues
     
     
