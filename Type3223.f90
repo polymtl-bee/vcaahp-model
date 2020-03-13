@@ -113,11 +113,38 @@ integer :: thisUnit, thisType    ! unit and type numbers
 ! Set the version number for this Type
 if (GetIsVersionSigningTime()) then
     call SetTypeVersion(18)
-    return  ! We are done for this call
+    return
 endif
 
 call GetTRNSYSvariables()
-call ExecuteSpecialCases()
+
+! All the stuff that must be done once at the beginning
+if(GetIsFirstCallofSimulation()) then
+	call ExecuteFirstCallOfSimulation()
+	return
+endif
+
+! Parameters must be re-read - indicates another unit of this Type
+if(GetIsReReadParameters()) call ReadParameters()
+
+! Start of the first timestep: no iterations, outputs initial conditions
+if (GetIsStartTime()) then
+    call ExecuteStartTime()
+	return
+endif
+
+! End of timestep call (after convergence or too many iterations)
+if (GetIsEndOfTimestep()) then
+    call ExecuteEndOfTimestep()
+    return
+endif
+    
+if (GetIsLastCallofSimulation()) then
+    call ExecuteLastCallOfSimulation()
+    return
+endif
+
+
 call GetInputValues()
 if (ErrorFound()) return
 
@@ -151,6 +178,7 @@ fmaxBoost = .false.
 if (fmax < 0.0_wp) then
     if (mode == 0) then
         old_zone = int(GetDynamicArrayValueLastTimestep(6))
+        t_boost = int(GetDynamicArrayValueLastTimestep(7))
         zone = GetLevel(s(Ni)%Toa2, s(Ni)%Toa2, Toa, old_zone, 1)
         call SetDynamicArrayValueThisIteration(6, real(zone, wp))
         AFR2level = FindLevel(s(Ni)%AFR2, AFR, s(Ni)%nAFR2)
@@ -211,6 +239,7 @@ if (abs(fq - fmax) < 0.001_wp .and. fmaxBoost) then
 else
     t_boost = 0.0_wp
 endif
+call SetDynamicArrayValueThisIteration(7, real(t_boost, wp))
 
 if (defrost_mode == -1) call SetDefrostMode(defrost_mode)
 recov_penalty = RecoveryPenalty(defrost_mode, t_ld, tau)
@@ -463,12 +492,9 @@ return
         defrost_mode = GetInputValue(13)
     end subroutine GetInputValues
     
-
-    subroutine ExecuteSpecialCases
     
-    ! All the stuff that must be done once at the beginning
-    if(GetIsFirstCallofSimulation()) then
-	    call SetNumberofParameters(3)
+    subroutine ExecuteFirstCallOfSimulation
+        call SetNumberofParameters(3)
 	    call SetNumberofInputs(13)
 	    call SetNumberofDerivatives(0)
 	    call SetNumberofOutputs(5)
@@ -485,12 +511,10 @@ return
         
         call ReadParameters()
         call ReadControlFiles(LUcool, LUheat)
-        
-	    return
-    endif
+    end subroutine ExecuteFirstCallOfSimulation
     
-    ! Start of the first timestep: no iterations, outputs initial conditions
-    if (GetIsStartTime()) then
+    
+    subroutine ExecuteStartTime
         call ReadParameters()
         call GetInputValues()
 	    call SetOutputValue(1, 0.0_wp)  ! Normalized frequency
@@ -506,25 +530,20 @@ return
         call SetDynamicArrayInitialValue(5, 1.0_wp)  ! Air flow rate level
         call SetDynamicArrayInitialValue(6, 1.0_wp)  ! Outdoor temperature zone
         call SetDynamicArrayInitialValue(7, 0.0_wp)  ! Boost frequency operation time
-        call SetDynamicArrayInitialValue(8, 0.0_wp)  ! Boost frequency operation time
-        call SetDynamicArrayInitialValue(9, 0.0_wp)  ! Boost frequency operation time
-        call SetDynamicArrayInitialValue(10, 0.0_wp)  ! Boost frequency operation time
-	    return
-    endif
+        call SetDynamicArrayInitialValue(8, 0.0_wp)  ! Time since last defrost
+        call SetDynamicArrayInitialValue(9, 0.0_wp)  ! Time under cutoff frequency
+        call SetDynamicArrayInitialValue(10, 0.0_wp)  ! Time over cutoff frequency
+    end subroutine ExecuteStartTime
+
     
-    ! Parameters must be re-read - indicates another unit of this Type
-    if(GetIsReReadParameters()) call ReadParameters()
+    subroutine ExecuteEndOfTimestep
+        continue
+    end subroutine ExecuteEndOfTimestep
     
-    ! End of timestep call (after convergence or too many iterations)
-    if (GetIsEndOfTimestep()) then
-        return  ! We are done for this call
-    endif
     
-    if (GetIsLastCallofSimulation()) then
-        return  ! We are done for this call
-    endif
-    
-    end subroutine ExecuteSpecialCases
+    subroutine ExecuteLastCallOfSimulation
+        continue
+    end subroutine ExecuteLastCallOfSimulation    
     
     
     subroutine ReadParameters
