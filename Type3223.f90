@@ -55,8 +55,6 @@
 module Type3223Data
 
 use, intrinsic :: iso_fortran_env, only : wp=>real64    ! Defines a constant "wp" (working precision) that can be used in real numbers, e.g. 1.0_wp, and sets it to real64 (double precision)
-use TrnsysConstants
-use TrnsysFunctions
 implicit none
 
 type Type3223DataStruct
@@ -265,6 +263,7 @@ return
         cfHeatPath = GetLUfileName(LUh)
         call CheckControlFile(cfCoolPath)
         call CheckControlFile(cfHeatPath)
+        if (ErrorFound()) return
         
         open(LUh, file=cfHeatPath, status='old')
         open(LUc, file=cfCoolPath, status='old')
@@ -501,7 +500,6 @@ return
 	    call SetIterationMode(1)
 	    call SetNumberStoredVariables(0, 10)
 	    call SetNumberofDiscreteControls(0)
-        call SetIterationMode(2)
         h = GetSimulationTimeStep()
         
         ! Allocate stored data structure

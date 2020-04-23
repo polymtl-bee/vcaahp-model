@@ -78,8 +78,6 @@
 module Type3254Data
 
 use, intrinsic :: iso_fortran_env, only : wp=>real64    ! Defines a constant "wp" (working precision) that can be used in real numbers, e.g. 1.0_wp, and sets it to real64 (double precision)
-use TrnsysConstants
-use TrnsysFunctions
 implicit none
 
 type Type3254DataStruct
@@ -93,8 +91,8 @@ type Type3254DataStruct
     real(wp), allocatable :: PelcMap(:, :, :, :, :)
     real(wp), allocatable :: QcsMap(:, :, :, :, :)
     real(wp), allocatable :: QclMap(:, :, :, :, :)
-    real(wp), allocatable :: PelhMap(:, :, :, :, :)
-    real(wp), allocatable :: QhMap(:, :, :, :, :)
+    real(wp), allocatable :: PelhMap(:, :, :, :)
+    real(wp), allocatable :: QhMap(:, :, :, :)
 
 end type Type3254DataStruct
 
@@ -139,14 +137,14 @@ integer :: Ni = 1  ! temporary, should use a kernel function to get the actual i
 real(wp) :: defrost_corr(2) = 0.0_wp  ! correction factors
 
 ! Performance map reading variables
-integer, parameter :: Nc = 5, Nh = 5  ! Number of interpolation variables
+integer, parameter :: Nc = 5, Nh = 4  ! Number of interpolation variables
 integer, parameter :: Nmax = max(Nc, Nh)
 integer :: i, j, N, Noutc = 3, Nouth = 2, Nout
 
 
 ! Interpolation variables
-real(wp) :: point(Nmax, 0:1)
-real(wp), allocatable :: interpolationResults(:)
+!real(wp), allocatable :: point(:)
+real(wp), allocatable :: interpolationResults(:), point(:)
 
 ! Set the version number for this Type
 if (GetIsVersionSigningTime()) then
@@ -194,18 +192,22 @@ if (mode == 1) then ! compute outdoor air wet bulb
 end if
 
 ! Interpolate using wet bulb
-point(1, mode) = Tr
+allocate(point(N))
+point(1) = Tr
 if (mode == 0) then
-    point(2, mode) = Twbr
-    point(3, mode) = Toa
+    point(2) = Twbr
+    point(3) = Toa
+    point(4) = mDot / (dr * AFRrated)
+    point(5) = freq / freqRated
 else
-    point(2, mode) = Toa
-    point(3, mode) = Twboa
+    point(2) = Toa
+    point(3) = mDot / (dr * AFRrated)
+    point(4) = freq / freqRated
 end if
-point(4, mode) = mDot / (dr * AFRrated)
-point(5, mode) = freq / freqRated
+
 allocate(interpolationResults(Nout))
-interpolationResults = interpolate(point(:, mode), mode, Nout)
+interpolationResults = interpolate(point, mode, Nout)
+deallocate(point)
 if (mode == 0) Pel = interpolationResults(1) * PelcRated
 if (mode == 1) Pel = interpolationResults(1) * PelhRated * defrost_corr(1)
 Qcs = interpolationResults(2) * QcsRated
@@ -287,7 +289,7 @@ return
     subroutine ReadPermap
         character (len=maxPathLength) :: permapCoolPath
         character (len=maxPathLength) :: permapHeatPath
-        integer :: nTr, nTwbr, nToa, nTwboa, nmDot, nfreq  ! number of entries for each variable
+        integer :: nTr, nTwbr, nToa, nmDot, nfreq  ! number of entries for each variable
         real(wp) :: filler(Nmax)
     
         ! Ni = GetCurrentUnit()
@@ -313,8 +315,8 @@ return
             read(LUheat, *)  ! Skip a line
             read(LUheat, *) s(Ni)%extents(i, 1)
         end do
-        s(Ni)%PMClength = product(s(Ni)%extents(:, 0))
-        s(Ni)%PMHlength = product(s(Ni)%extents(:, 1))
+        s(Ni)%PMClength = product(s(Ni)%extents(1:Nc, 0))
+        s(Ni)%PMHlength = product(s(Ni)%extents(1:Nh, 1))
         allocate(s(Ni)%entries(maxval(s(Ni)%extents), Nmax, 0:1))
         do i = 1, Nc
             read(LUcool, *)  ! Skip a line
@@ -348,11 +350,10 @@ return
         
         nTr = s(Ni)%extents(1, 1)
         nToa = s(Ni)%extents(2, 1)
-        nTwboa = s(Ni)%extents(3, 1)
-        nmDot = s(Ni)%extents(4, 1)
-        nfreq = s(Ni)%extents(5, 1)
-        allocate(s(Ni)%PelhMap(nTr, nToa, nTwboa, nmDot, nfreq))
-        allocate(s(Ni)%QhMap(nTr, nToa, nTwboa, nmDot, nfreq))
+        nmDot = s(Ni)%extents(3, 1)
+        nfreq = s(Ni)%extents(4, 1)
+        allocate(s(Ni)%PelhMap(nTr, nToa, nmDot, nfreq))
+        allocate(s(Ni)%QhMap(nTr, nToa, nmDot, nfreq))
         do i = 1, s(Ni)%PMHlength
             read(LUheat, *) (filler(j), j = 1, Nh), Pel, Qh
             call SetPMvalue(s(Ni)%PelhMap, i, Pel, s(Ni)%PMHlength)
@@ -455,7 +456,7 @@ return
         real(wp) :: GetPMvalue
         array_idx = idx(N)
         do i = N-1, 1, -1
-            array_idx = array_idx + product(s(Ni)%extents(i+1:, mode)) * (idx(i) - 1)
+            array_idx = array_idx + product(s(Ni)%extents(i+1:N, mode)) * (idx(i) - 1)
         end do
         GetPMvalue = array(array_idx)
     end function GetPMvalue
