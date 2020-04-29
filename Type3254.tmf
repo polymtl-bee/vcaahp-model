@@ -511,22 +511,7 @@ real
 0
 kJ/hr
 Power
-Rated sensible cooling capacity
-SN
-1
-The total cooling capacity of the heat pump at its rated conditions. Make sure the data file corresponds to the same rating conditions.
-simple
-real
-3
-+
-0.0
-+Inf
-[ ; ]
-1
-0
-kJ/hr
-Power
-Rated latent cooling capacity
+Rated cooling capacity
 SN
 1
 The sensible cooling capacity of the heat pump at its rated conditions. Make sure the data file corresponds to the same rating conditions.
@@ -586,7 +571,7 @@ real
 0
 m^3/hr
 Volumetric Flow Rate
-Rated frequency
+Rated cooling frequency
 SN
 1
 The frequency of the heat pump compressor at its rated conditions. Make sure the data file corresponds to the same rating conditions.
@@ -697,6 +682,21 @@ real
 0
 kJ/hr
 Power
+Rated heating frequency
+SN
+1
+
+simple
+real
+3
++
+0.0
++Inf
+[ ; ]
+1
+0
+1/S
+Frequency
 Logical Unit - cooling mode
 SN
 1

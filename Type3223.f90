@@ -172,12 +172,16 @@ if (fmin < 0.0_wp) then
     fmin = s(Ni)%f0(Toalevel, mode)
 end if
 
+if (getSimulationTime() > 3.44) then
+    continue
+end if
+
 fmaxBoost = .false.
 if (fmax < 0.0_wp) then
     if (mode == 0) then
         old_zone = int(GetDynamicArrayValueLastTimestep(6))
         t_boost = int(GetDynamicArrayValueLastTimestep(7))
-        zone = GetLevel(s(Ni)%Toa2, s(Ni)%Toa2, Toa, old_zone, 1)
+        zone = GetLevel(s(Ni)%Toa2, s(Ni)%db2, Toa, old_zone, 1)
         call SetDynamicArrayValueThisIteration(6, real(zone, wp))
         AFR2level = FindLevel(s(Ni)%AFR2, AFR, s(Ni)%nAFR2)
         if (AFR2level > s(Ni)%nAFR2) AFR2level = s(Ni)%nAFR2
@@ -202,14 +206,13 @@ else
     modulate = .true.
 end if
 
+call RecallStoredPIvalues()
 if (modulate) then
     e = (Tset - Tr) * (2.0_wp * real(mode, wp) - 1.0_wp)  ! Error
 
     ! Default values for extra parameters
     if (tt < 0.0_wp) tt = ti
     if (b < 0.0_wp) b = 1.0_wp
-
-    call RecallStoredPIvalues()
 
     if (onOff <= 0) then
         f = 0
@@ -226,11 +229,17 @@ if (modulate) then
             fi = fi - h * (es + es_old) / 2 / tt  ! De-saturate integral signal
             f = fp + fi  ! Re-calculate the unsaturated signal
         endif
-        fsat = min(fmax, max(fmin, f))  ! Saturated signal
-        fq = (1.0_wp * floor(N * fsat)) / (1.0_wp * N)
+        if (f > 0.0_wp) then
+            fsat = min(fmax, max(fmin, f))  ! Saturated signal
+            fq = (1.0_wp * floor(N * fsat)) / (1.0_wp * N)
+        else
+            fq = 0.0_wp
+        end if
     endif
-    call StorePIvalues()
+else if (ti > 0.0_wp) then
+    fi = fi_old + Kc / ti * h * (e + e_old) / 2
 end if
+call StorePIvalues()
 
 if (abs(fq - fmax) < 0.001_wp .and. fmaxBoost) then
     t_boost = t_boost + dt
@@ -366,10 +375,10 @@ return
         if (level == size(centers) + 1) idx = size(centers)
         if (value < centers(idx-1) + hdb(idx-1)) then
             if (old_level < level .and. hyst_dir == 1) level = level - 1
-            if (old_level > level .and. hyst_dir == 0) level = level + 1
+            if (old_level < level .and. hyst_dir == 0) level = level + 1
         else if (value > centers(idx) - hdb(idx)) then
             if (old_level > level .and. hyst_dir == 1) level = level + 1
-            if (old_level < level .and. hyst_dir == 0) level = level - 1
+            if (old_level > level .and. hyst_dir == 0) level = level - 1
         end if
         GetLevel = level
     end function GetLevel

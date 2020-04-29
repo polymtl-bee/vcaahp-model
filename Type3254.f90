@@ -37,12 +37,12 @@
 !  1 | psymode      | 2 = Humidity ratio as humidity input          | -             | -
 !                   | 4 = Relative humidity as humidity input       |               |
 !  2 | PelcRated    | Rated total cooling power                     | kJ/h          | kJ/h
-!  3 | QcsRated     | Rated sensible cooling capacity               | kJ/h          | kJ/h
-!  4 | QclRated     | Rated latent cooling capacity                 | kJ/h          | kJ/h
-!  5 | PelhRated    | Rated total heating power                     | kJ/h          | kJ/h
-!  6 | QhRated      | Rated heating capacity                        | kJ/h          | kJ/h
-!  7 | AFRrated     | Rated inlet air mass flow rate                | kg/h          | kg/h
-!  8 | freqRated    | Rated frequency                               | 1/s           | 1/s
+!  3 | QcRated      | Rated cooling capacity                        | kJ/h          | kJ/h
+!  4 | PelhRated    | Rated total heating power                     | kJ/h          | kJ/h
+!  5 | QhRated      | Rated heating capacity                        | kJ/h          | kJ/h
+!  6 | AFRrated     | Rated inlet air mass flow rate                | kg/h          | kg/h
+!  7 | freqRatedHeat| Rated heating frequency                       | 1/s           | 1/s
+!  8 | freqRatedCool| Rated cooling frequency                       | 1/s           | 1/s
 !  9 | LUcool       | Logical Unit - cooling mode                   | -             | -
 ! 10 | LUheat       | Logical Unit - heating mode                   | -             | -
 ! --------------------------------------------------------------------------------------------------
@@ -121,7 +121,7 @@ real(wp) :: Tr, wr, RHr, mDot, pr, Toa, woa, RHoa, poa, freq, PfanI, PfanO  ! In
 integer :: mode, defrost_mode = 1
 real(wp) :: recov_penalty, AFR
 integer :: psymode, LUcool, LUheat  ! Parameters
-real(wp) :: PelcRated, QcsRated, QclRated, PelhRated, QhRated, AFRrated, freqRated  ! Parameters (rated values)
+real(wp) :: PelcRated, QcRated, PelhRated, QhRated, AFRrated, freqRatedh, freqRatedc  ! Parameters (rated values)
 real(wp) :: Ts, ws, RHs, ps  ! Outputs (supply conditions)
 real(wp) :: Pel, Qc, Qcs, Qcl, Qrej, Qh, Qabs, Pcomp  ! Outputs (heat and power)
 real(wp) :: COP, EER, Tc, cmfr  ! Outputs (misc)
@@ -179,7 +179,7 @@ RHr = psydat(4)  ! RHr between 0 and 1 (not 0 and 100)
 wr = psydat(6)
 hr = psydat(7)
 dr = psydat(9)
-if (AFR >= 0) mDot = AFR * dr
+if (AFR >= 0) mDot = AFR * AFRrated * dr
 
 if (mode == 1) then ! compute outdoor air wet bulb
     psydat(1) = poa
@@ -191,30 +191,37 @@ if (mode == 1) then ! compute outdoor air wet bulb
     defrost_corr = Correction(defrost_mode, recov_penalty)
 end if
 
-! Interpolate using wet bulb
-allocate(point(N))
-point(1) = Tr
-if (mode == 0) then
-    point(2) = Twbr
-    point(3) = Toa
-    point(4) = mDot / (dr * AFRrated)
-    point(5) = freq / freqRated
+if (freq > 0) then
+    ! Interpolate using wet bulb in cooling
+    allocate(point(N))
+    point(1) = Tr
+    if (mode == 0) then
+        point(2) = Twbr
+        point(3) = Toa
+        point(4) = mDot / (dr * AFRrated)
+        point(5) = freq! / freqRatedc
+    else
+        point(2) = Toa
+        point(3) = AFR !/ (dr * AFRrated)
+        point(4) = freq! / freqRatedh
+    end if
+    allocate(interpolationResults(Nout))
+    interpolationResults = interpolate(point, mode, Nout)
+    deallocate(point)
+    if (mode == 0) Pel = interpolationResults(1) * PelcRated
+    if (mode == 1) Pel = interpolationResults(1) * PelhRated * defrost_corr(1)
+    Qcs = interpolationResults(2) * QcRated
+    Qcl = interpolationResults(3) * QcRated
+    Qh = interpolationResults(4) * QhRated * defrost_corr(2)
+    Qc = Qcs + Qcl
+    deallocate(interpolationResults)
 else
-    point(2) = Toa
-    point(3) = mDot / (dr * AFRrated)
-    point(4) = freq / freqRated
-end if
-
-allocate(interpolationResults(Nout))
-interpolationResults = interpolate(point, mode, Nout)
-deallocate(point)
-if (mode == 0) Pel = interpolationResults(1) * PelcRated
-if (mode == 1) Pel = interpolationResults(1) * PelhRated * defrost_corr(1)
-Qcs = interpolationResults(2) * QcsRated
-Qcl = interpolationResults(3) * QclRated
-Qh = interpolationResults(4) * QhRated * defrost_corr(2)
-Qc = Qcs + Qcl
-deallocate(interpolationResults)
+    Qcs = 0
+    Qcl = 0
+    Qh = 0
+    Qc = 0
+    Pel = 0
+endif
 
 ! Supply air state
 ps = pr  ! Fan pressure drop neglected
@@ -259,18 +266,18 @@ RHs = psydat(4)
 ws = psydat(6)
 hs = psydat(7)
 
-if (mode == 0) then
+if (mode == 0 .and. freq > 0) then
     ! Re-calculate heat transfer whose value is modified if saturation occurs
     Qcs = mDot * (hx - hs)  ! Sensible cooling rate
     Qcl = mDot * (hr - hx)  ! Latent cooling rate
     Qc = Qcs + Qcl  ! Total cooling rate
     Qrej = Qc + Pel  ! Heat rejection
     Qabs = 0.0_wp
-else
+else if (freq > 0) then
     Qrej = 0.0_wp
     Qabs = Qh - Pel
 end if
-Pcomp = Pel - PfanI - PfanO  ! Compressor power
+if (freq > 0) Pcomp = Pel - PfanI - PfanO  ! Compressor power
 if (Pel /= 0.0_wp) then
     COP = (Qc + Qh) / Pel
 else
@@ -396,7 +403,7 @@ return
             lb_idx(i) = j
             LBvalue = s(Ni)%entries(j, i, mode)
             UBvalue = s(Ni)%entries(j+1, i, mode)
-            scaled_point(i) = (point(i) - LBvalue) / (UBvalue - LBvalue)
+            scaled_point(i) = min(1.0_wp, max(0.0_wp, (point(i) - LBvalue) / (UBvalue - LBvalue)))
         end do
         allocate(hypercube(Nout, 2**N))
         counter_bool = .true.
@@ -435,7 +442,7 @@ return
     
     function Vertex(i, idx)
         integer, intent(in) :: i, idx(:)
-        real(wp) :: Pel, Qcs, Qcl, vertex(Nout)
+        real(wp) :: Pel, Qcs, Qcl, Qh, vertex(Nout)
         if (mode == 0) then
             Pel = GetPMvalue(mode, s(Ni)%PelcMap, idx)
             Qcs = GetPMvalue(mode, s(Ni)%QcsMap, idx)
@@ -454,9 +461,9 @@ return
         integer :: mode, i, array_idx
         real(wp) :: array((1-mode)*s(Ni)%PMClength + mode*s(Ni)%PMHlength)
         real(wp) :: GetPMvalue
-        array_idx = idx(N)
-        do i = N-1, 1, -1
-            array_idx = array_idx + product(s(Ni)%extents(i+1:N, mode)) * (idx(i) - 1)
+        array_idx = idx(1)
+        do i = 2, N
+            array_idx = array_idx + product(s(Ni)%extents(1:i-1, mode)) * (idx(i) - 1)
         end do
         GetPMvalue = array(array_idx)
     end function GetPMvalue
@@ -622,12 +629,12 @@ return
     subroutine ReadParameters
         psymode = GetParameterValue(1)
         PelcRated = GetParameterValue(2)
-        QcsRated = GetParameterValue(3)
-        QclRated = GetParameterValue(4)
-        PelhRated = GetParameterValue(5)
-        QhRated = GetParameterValue(6)
-        AFRrated = GetParameterValue(7)
-        freqRated = GetParameterValue(8)
+        QcRated = GetParameterValue(3)
+        PelhRated = GetParameterValue(4)
+        QhRated = GetParameterValue(5)
+        AFRrated = GetParameterValue(6)
+        freqRatedc = GetParameterValue(7)
+        freqRatedh = GetParameterValue(8)
         LUcool = GetParameterValue(9)
         LUheat = GetParameterValue(10)
     end subroutine ReadParameters
@@ -678,7 +685,7 @@ return
     
     
     subroutine GetTRNSYSvariables
-        time = getSimulationTime()
+        !time = getSimulationTime()
         dt = getSimulationTimeStep()
         thisUnit = getCurrentUnit()
         thisType = getCurrentType()
