@@ -202,7 +202,7 @@ if (freq > 0) then
         point(5) = freq! / freqRatedc
     else
         point(2) = Toa
-        point(3) = AFR !/ (dr * AFRrated)
+        point(3) = mDot / (dr * AFRrated)
         point(4) = freq! / freqRatedh
     end if
     allocate(interpolationResults(Nout))

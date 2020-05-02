@@ -43,7 +43,7 @@ __
 __
 __
 __
-21
+22
 Setpoint
 SN
 1
@@ -224,6 +224,22 @@ integer
 +Inf
 [ ; ]
 10
+0
+-
+Dimensionless
+Normalized air flow rate
+SN
+2
+Imposes the heat pump normalized air flow rate to a fixed value.
+If negative, the air flow rate is selected automatically from the control file values.
+simple
+real
+1
++
+0.0
++Inf
+[ ; ]
+-1
 0
 -
 Dimensionless
@@ -481,7 +497,7 @@ Logical Unit - heating mode
 0
 0
 0
-12
+13
 0
 
 

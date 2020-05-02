@@ -20,9 +20,10 @@
 !  9 | tt           | Tracking time constant                        | h             | h
 ! 10 | b            | Proportional setpoint weight                  | -             | -
 ! 11 | N            | Number of frequency levels                    | -             | -
-! 12 | mode         | 0 = cooling mode                              | -             | -
+! 12 | AFR          | Normalized air flow rate                      | -             | -
+! 13 | mode         | 0 = cooling mode                              | -             | -
 !                   | 1 = heating mode                              |               |
-! 13 | defrost_mode |-1 = defrost cycles (normal behaviour)         | -             | -
+! 14 | defrost_mode |-1 = defrost cycles (normal behaviour)         | -             | -
 !                   | 0 = defrost (off) mode                        |               |
 !                   | 1 = recovery mode (transient)                 |               |
 !                   | 2 = steady-state mode                         |               |
@@ -163,7 +164,7 @@ call SetDynamicArrayValueThisIteration(4, real(mode, wp))
 ! Get air flow rate
 old_AFRlevel = int(GetDynamicArrayValueLastTimestep(5))
 AFRlevel = GetLevel(s(Ni)%AFRerror(:, mode), s(Ni)%AFRdb(:, mode), e, old_AFRlevel, mode)
-AFR = s(Ni)%AFR(AFRlevel, mode)
+if (AFR < 0) AFR = s(Ni)%AFR(AFRlevel, mode)
 call SetDynamicArrayValueThisIteration(5, real(AFRlevel, wp))
 
 ! Get frequency limits
@@ -496,14 +497,15 @@ return
         tt = GetInputValue(9)
         b = GetInputValue(10)
         N = GetInputValue(11)
-        mode = GetInputValue(12)
-        defrost_mode = GetInputValue(13)
+        AFR = GetInputValue(12)
+        mode = GetInputValue(13)
+        defrost_mode = GetInputValue(14)
     end subroutine GetInputValues
     
     
     subroutine ExecuteFirstCallOfSimulation
         call SetNumberofParameters(3)
-	    call SetNumberofInputs(13)
+	    call SetNumberofInputs(14)
 	    call SetNumberofDerivatives(0)
 	    call SetNumberofOutputs(5)
 	    call SetIterationMode(1)
