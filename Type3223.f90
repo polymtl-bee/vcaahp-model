@@ -69,7 +69,7 @@ type Type3223DataStruct
     real(wp) :: f2heat, t_boost_max, f1f2
     
     ! Defrost parameters
-    real(wp) :: Tcutoff, t_cy, t_off, t_rec
+    real(wp) :: Tcutoff, t_df, t_h(4), t_rec(2), Tmin
     
 
 end type Type3223DataStruct
@@ -98,6 +98,8 @@ real(wp) :: e, es, f, fp, fi  ! Controller signals
 real(wp) :: h ! timestep
 real(wp) :: Tset_old, Tr_old, fi_old, es_old, e_old  ! Values of the previous timestep
 real(wp) :: mode_deadband  ! Parameters
+real(wp) :: t_mnt, t_mnt_min, fq_prev  ! time during wich the frequency must stay monotonic
+integer :: dfdt_sign, dfdt_sign_prev  ! sign of the frequency derivative
 integer :: LUheat, LUcool
 integer :: N, mode, prev_mode  ! Number of frequency levels, operating mode
 integer :: Ni = 1, Ninstances = 1  ! temporary, should use a kernel function to get the actual instance number.
@@ -105,7 +107,7 @@ integer :: AFRlevel, old_AFRlevel, zone, old_zone, AFR2level, Toalevel
 real(wp) :: AFR, t_boost
 logical :: modulate, fmaxBoost
 integer :: defrost_mode
-real(wp) :: t_ld, tau, t_uc, t_oc, recov_penalty
+real(wp) :: t_ld, t_uc, t_oc, Toa_av, Toa_av_prev, t_rec, recov_penalty
 
 integer :: thisUnit, thisType    ! unit and type numbers
 
@@ -173,10 +175,6 @@ if (fmin < 0.0_wp) then
     fmin = s(Ni)%f0(Toalevel, mode)
 end if
 
-if (getSimulationTime() > 3.44) then
-    continue
-end if
-
 fmaxBoost = .false.
 if (fmax < 0.0_wp) then
     if (mode == 0) then
@@ -230,7 +228,7 @@ if (modulate) then
             fi = fi - h * (es + es_old) / 2 / tt  ! De-saturate integral signal
             f = fp + fi  ! Re-calculate the unsaturated signal
         endif
-        if (f > 0.0_wp) then
+        if (f > fmin / 2.0_wp) then
             fsat = min(fmax, max(fmin, f))  ! Saturated signal
             fq = (1.0_wp * floor(N * fsat)) / (1.0_wp * N)
         else
@@ -242,6 +240,34 @@ else if (ti > 0.0_wp) then
 end if
 call StorePIvalues()
 
+
+t_mnt_min = 5.0_wp / 60.0_wp
+t_mnt = GetDynamicArrayValueLastTimestep(12)
+fq_prev = GetDynamicArrayValueLastTimestep(13)
+dfdt_sign_prev = int(GetDynamicArrayValueLastTimestep(14))
+if (fq > fq_prev) then
+    dfdt_sign = 1
+else if (fq < fq_prev) then
+    dfdt_sign = -1
+else
+    dfdt_sign = dfdt_sign_prev
+end if
+
+if (dfdt_sign*dfdt_sign_prev == -1) then
+    if (t_mnt <= t_mnt_min) then
+        fq = fq_prev
+        t_mnt = t_mnt + dt
+        dfdt_sign = dfdt_sign_prev
+    else
+        t_mnt = 0.0_wp
+    end if
+else
+    t_mnt = t_mnt + dt
+end if
+call SetDynamicArrayValueThisIteration(12, t_mnt)
+call SetDynamicArrayValueThisIteration(13, fq)
+call SetDynamicArrayValueThisIteration(14, real(dfdt_sign, wp))
+
 if (abs(fq - fmax) < 0.001_wp .and. fmaxBoost) then
     t_boost = t_boost + dt
 else
@@ -249,8 +275,8 @@ else
 endif
 call SetDynamicArrayValueThisIteration(7, real(t_boost, wp))
 
-if (defrost_mode == -1) call SetDefrostMode(defrost_mode)
-recov_penalty = RecoveryPenalty(defrost_mode, t_ld, tau)
+if (defrost_mode == -1 .and. mode == 1) call SetDefrostMode(defrost_mode)
+if (mode == 1) recov_penalty = RecoveryPenalty(t_ld, t_rec)  ! if () because risk of division by zero
 
 call SetOutputValues()
 
@@ -312,8 +338,12 @@ return
         read(LUh, *) (s(Ni)%f0(i, 1), i = 1, s(Ni)%nf0(1))
             call SkipLines(LUheat, 2)
         read(LUh, *) s(Ni)%f2heat
-            call SkipLines(LUheat, 7)
-        read(LUh, *) s(Ni)%Tcutoff, s(Ni)%t_cy, s(Ni)%t_off, s(Ni)%t_rec
+            call SkipLines(LUheat, 8)
+        read(LUh, *) s(Ni)%Tcutoff, s(Ni)%t_df
+            call SkipLines(LUheat, 2)
+        read(LUh, *) (s(Ni)%t_h(i), i = 1, 4)
+            call SkipLines(LUheat, 2)
+        read(LUh, *) (s(Ni)%t_rec(i), i = 1, 2), s(Ni)%Tmin
         close(LUh)
             call SkipLines(LUcool, 3)
         read(LUc, *) s(Ni)%t_boost_max, s(Ni)%f1f2
@@ -409,14 +439,27 @@ return
     
     subroutine SetDefrostMode(defrost_mode)
         integer :: defrost_mode
-        real(wp) :: Tcutoff, t_cy, t_off, t_rec, t_ss
-        t_cy = s(Ni)%t_cy
-        t_off = s(Ni)%t_off
-        t_rec = s(Ni)%t_rec
-        t_ss = t_cy - t_off - t_rec
-        tau = t_rec - t_off
+        real(wp) :: Tcutoff, t_cycle, t_h, t_df
+        real(wp) :: a, b, c, d, m, p, Tmin
+        a = s(Ni)%t_h(1) / 60
+        b = s(Ni)%t_h(2) / 60
+        c = s(Ni)%t_h(3)
+        d = s(Ni)%t_h(4)
+        m = s(Ni)%t_rec(1) / 60
+        p = s(Ni)%t_rec(2) / 60
+        Tmin = s(Ni)%Tmin
+        t_df = s(Ni)%t_df / 60
 
         call RecallStoredDefrostValues()
+        
+        Toa_av = (t_ld*Toa_av_prev + dt*Toa) / (t_ld + dt)
+        t_h = a + b * exp(c * (Toa_av + d))
+        if (Toa_av >= Tmin) then
+            t_rec = m * Toa_av + p
+        else
+            t_rec = 37 / 60
+        end if
+        t_cycle = t_h + t_df
         
         if (Toa < Tcutoff) then
             t_uc = t_uc + dt
@@ -426,23 +469,23 @@ return
     
         if (t_ld < t_rec) then
             defrost_mode = 1
-        else if (t_ld < t_rec + t_ss) then
+        else if (t_ld < t_h) then
             defrost_mode = 2
         else if (t_uc < t_oc) then
             t_uc = 0.0_wp
             t_oc = 0.0_wp
             t_ld = t_rec - dt
             defrost_mode = 2
-        else if (t_ld < t_cy) then
+        else if (t_ld < t_cycle) then
             defrost_mode = 0
         else
             t_ld = -dt
             t_uc = 0.0_wp
             t_oc = 0.0_wp
+            Toa_av = 0
             defrost_mode = 1
         end if
         t_ld = t_ld + dt
-        
         call StoreDefrostValues()
     end subroutine SetDefrostMode
     
@@ -465,6 +508,7 @@ return
         call SetDynamicArrayValueThisIteration(8, t_ld)
         call SetDynamicArrayValueThisIteration(9, t_uc)
         call SetDynamicArrayValueThisIteration(10, t_oc)
+        call SetDynamicArrayValueThisIteration(11, Toa_av)
     end subroutine StoreDefrostValues
     
     
@@ -472,17 +516,14 @@ return
         t_ld = GetDynamicArrayValueLastTimestep(8)
         t_uc = GetDynamicArrayValueLastTimestep(9)
         t_oc = GetDynamicArrayValueLastTimestep(10)
+        Toa_av_prev = GetDynamicArrayValueLastTimestep(11)
     end subroutine RecallStoredDefrostValues
     
-    function RecoveryPenalty(defrost_mode, t_ld, tau)
-        integer, intent(in) :: defrost_mode
-        real(wp), intent(in) :: t_ld, tau
-        real(wp) :: recoveryPenalty
-        if (defrost_mode == 1) then
-            recoveryPenalty = 1.0_wp - exp(-1-t_ld/tau)
-        else
-            recoveryPenalty = 0.0_wp
-        end if
+    function RecoveryPenalty(t_ld, t_rec)
+        real(wp), intent(in) :: t_ld, t_rec
+        real(wp) :: recoveryPenalty, t_dimless
+        t_dimless = t_ld / t_rec
+        recoveryPenalty = 2*t_dimless - t_dimless**2
     end function RecoveryPenalty
     
     subroutine GetInputValues
@@ -509,7 +550,7 @@ return
 	    call SetNumberofDerivatives(0)
 	    call SetNumberofOutputs(5)
 	    call SetIterationMode(1)
-	    call SetNumberStoredVariables(0, 10)
+	    call SetNumberStoredVariables(0, 14)
 	    call SetNumberofDiscreteControls(0)
         h = GetSimulationTimeStep()
         
@@ -542,6 +583,10 @@ return
         call SetDynamicArrayInitialValue(8, 0.0_wp)  ! Time since last defrost
         call SetDynamicArrayInitialValue(9, 0.0_wp)  ! Time under cutoff frequency
         call SetDynamicArrayInitialValue(10, 0.0_wp)  ! Time over cutoff frequency
+        call SetDynamicArrayInitialValue(11, 0.0_wp)  ! Average outdoor temperature
+        call SetDynamicArrayInitialValue(12, 0.0_wp)  ! Time during which the frequency is forced constant
+        call SetDynamicArrayInitialValue(13, 0.0_wp)  ! Previous frequency value
+        call SetDynamicArrayInitialValue(14, 0.0_wp)  ! Previous frequency derivative sign
     end subroutine ExecuteStartTime
 
     
