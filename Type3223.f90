@@ -1,7 +1,7 @@
 ﻿! +---------------------------------------------------------+
 ! | TRNSYS Type3223: Variable capacity heat pump controller |
 ! +---------------------------------------------------------+
-    
+
 ! This routine implements a controller for an air-source heat pump with variable speed compressor.
 
 
@@ -28,7 +28,7 @@
 !                   | 1 = recovery mode (transient)                 |               |
 !                   | 2 = steady-state mode                         |               |
 ! --------------------------------------------------------------------------------------------------
-    
+
 ! Parameters
 ! --------------------------------------------------------------------------------------------------
 !  # | Variable     | Description                                   | Param. Units  | Internal Units
@@ -50,7 +50,7 @@
 !                   | 1 = recovery mode (transient)                 |               |
 !                   | 2 = steady-state mode                         |               |
 ! --------------------------------------------------------------------------------------------------
-    
+
 ! Author: Gregor Strugala
 
 module Type3223Data
@@ -59,7 +59,7 @@ use, intrinsic :: iso_fortran_env, only : wp=>real64    ! Defines a constant "wp
 implicit none
 
 type Type3223DataStruct
-    
+
     ! Frequency limitation parameters
     real(wp) :: e_min(0:1), e_max(0:1)
     integer :: nAFR(0:1), nAFRboost(0:1), nf0(0:1), nZones, nAFR2
@@ -67,10 +67,10 @@ type Type3223DataStruct
     real(wp), allocatable :: f0(:, :), Toa0(:, :)
     real(wp), allocatable :: f2(:, :), AFR2(:), Toa2(:), db2(:)
     real(wp) :: f2heat, t_boost_max, f1f2
-    
+
     ! Defrost parameters
     real(wp) :: Tcutoff, t_df, t_h(4), t_rec(2), Tmin
-    
+
 
 end type Type3223DataStruct
 
@@ -117,7 +117,10 @@ if (GetIsVersionSigningTime()) then
     return
 endif
 
-call GetTRNSYSvariables()
+time = GetSimulationTime()
+dt = GetSimulationTimeStep()
+thisUnit = GetCurrentUnit()
+thisType = GetCurrentType()
 
 ! All the stuff that must be done once at the beginning
 if(GetIsFirstCallofSimulation()) then
@@ -139,7 +142,7 @@ if (GetIsEndOfTimestep()) then
     call ExecuteEndOfTimestep()
     return
 endif
-    
+
 if (GetIsLastCallofSimulation()) then
     call ExecuteLastCallOfSimulation()
     return
@@ -283,7 +286,7 @@ call SetOutputValues()
 return
 
     contains
-    
+
     subroutine ReadControlFiles(LUc, LUh)
         character (len=maxPathLength) :: cfCoolPath
         character (len=maxPathLength) :: cfHeatPath
@@ -291,19 +294,19 @@ return
         integer :: nAFRmax, nf0max, i, j, LUs(2), LUcool(1), LUheat(1)
         LUcool(1) = LUc
         LUheat(1) = LUh
-    
+
         ! Ni = GetCurrentUnit()
         LUs = (/LUc, LUh/)
-    
+
         cfCoolPath = GetLUfileName(LUc)
         cfHeatPath = GetLUfileName(LUh)
         call CheckControlFile(cfCoolPath)
         call CheckControlFile(cfHeatPath)
         if (ErrorFound()) return
-        
+
         open(LUh, file=cfHeatPath, status='old')
         open(LUc, file=cfCoolPath, status='old')
-    
+
             call SkipLines(LUs, 6)
         read(LUc, *) s(Ni)%e_min(0)
         read(LUh, *) s(Ni)%e_min(1)
@@ -363,12 +366,12 @@ return
         do i = 1, s(Ni)%nZones + 1
             read(LUc, *) (s(Ni)%f2(i, j), j = 1, s(Ni)%nAFR2)
         end do
-        
+
         close(LUc)
-        
+
     end subroutine ReadControlFiles
-    
-    
+
+
     subroutine CheckControlFile(cfPath)
         logical :: ControlFileFound = .false.
         character (len=maxPathLength) :: cfPath
@@ -381,8 +384,8 @@ return
             return
         end if
     end subroutine CheckControlFile
-    
-    
+
+
     subroutine SkipLines(LUs, N)
         integer, intent(in) :: LUs(:)
         integer :: i, j, N
@@ -392,8 +395,8 @@ return
             end do
         end do
     end subroutine SkipLines
-    
-    
+
+
     function GetLevel(centers, deadbands, value, old_level, hyst_dir)
         real(wp), intent(in) :: centers(:), deadbands(:), value
         integer, intent(in) :: old_level, hyst_dir
@@ -413,7 +416,7 @@ return
         end if
         GetLevel = level
     end function GetLevel
-    
+
     function FindLevel(array, value, extent)
         real(wp), intent(in) :: array(:), value
         integer, intent(in) :: extent
@@ -435,38 +438,38 @@ return
             FindLevel = L
         end if
     end function FindLevel
-    
-    
+
+
     subroutine SetDefrostMode(defrost_mode)
         integer :: defrost_mode
         real(wp) :: Tcutoff, t_cycle, t_h, t_df
         real(wp) :: a, b, c, d, m, p, Tmin
-        a = s(Ni)%t_h(1) / 60
-        b = s(Ni)%t_h(2) / 60
+        a = s(Ni)%t_h(1) / 60.0_wp
+        b = s(Ni)%t_h(2) / 60.0_wp
         c = s(Ni)%t_h(3)
         d = s(Ni)%t_h(4)
-        m = s(Ni)%t_rec(1) / 60
-        p = s(Ni)%t_rec(2) / 60
+        m = s(Ni)%t_rec(1) / 60.0_wp
+        p = s(Ni)%t_rec(2) / 60.0_wp
         Tmin = s(Ni)%Tmin
-        t_df = s(Ni)%t_df / 60
+        t_df = s(Ni)%t_df / 60.0_wp
 
         call RecallStoredDefrostValues()
-        
+
         Toa_av = (t_ld*Toa_av_prev + dt*Toa) / (t_ld + dt)
         t_h = a + b * exp(c * (Toa_av + d))
         if (Toa_av >= Tmin) then
             t_rec = m * Toa_av + p
         else
-            t_rec = 37 / 60
+            t_rec = 37.0_wp / 60.0_wp
         end if
         t_cycle = t_h + t_df
-        
+
         if (Toa < Tcutoff) then
             t_uc = t_uc + dt
         else
             t_oc = t_oc + dt
         end if
-    
+
         if (t_ld < t_rec) then
             defrost_mode = 1
         else if (t_ld < t_h) then
@@ -488,62 +491,45 @@ return
         t_ld = t_ld + dt
         call StoreDefrostValues()
     end subroutine SetDefrostMode
-    
-    
+
+
     subroutine StorePIvalues
         call SetDynamicArrayValueThisIteration(1, e)
         call SetDynamicArrayValueThisIteration(2, fi)
         call SetDynamicArrayValueThisIteration(3, es)
     end subroutine StorePIvalues
-    
-    
+
+
     subroutine RecallStoredPIvalues
         e_old = GetDynamicArrayValueLastTimestep(1)
         fi_old = GetDynamicArrayValueLastTimestep(2)
         es_old = GetDynamicArrayValueLastTimestep(3)
     end subroutine RecallStoredPIvalues
-    
-    
+
+
     subroutine StoreDefrostValues
         call SetDynamicArrayValueThisIteration(8, t_ld)
         call SetDynamicArrayValueThisIteration(9, t_uc)
         call SetDynamicArrayValueThisIteration(10, t_oc)
         call SetDynamicArrayValueThisIteration(11, Toa_av)
     end subroutine StoreDefrostValues
-    
-    
+
+
     subroutine RecallStoredDefrostValues
         t_ld = GetDynamicArrayValueLastTimestep(8)
         t_uc = GetDynamicArrayValueLastTimestep(9)
         t_oc = GetDynamicArrayValueLastTimestep(10)
         Toa_av_prev = GetDynamicArrayValueLastTimestep(11)
     end subroutine RecallStoredDefrostValues
-    
+
     function RecoveryPenalty(t_ld, t_rec)
         real(wp), intent(in) :: t_ld, t_rec
         real(wp) :: recoveryPenalty, t_dimless
         t_dimless = t_ld / t_rec
         recoveryPenalty = 2*t_dimless - t_dimless**2
     end function RecoveryPenalty
-    
-    subroutine GetInputValues
-        Tset = GetInputValue(1)
-        Tr = GetInputValue(2)
-        Toa = GetInputValue(3)
-        onOff = GetInputValue(4)
-        fmin = GetInputValue(5)
-        fmax = GetInputValue(6)
-        Kc = GetInputValue(7)
-        ti = GetInputValue(8)
-        tt = GetInputValue(9)
-        b = GetInputValue(10)
-        N = GetInputValue(11)
-        AFR = GetInputValue(12)
-        mode = GetInputValue(13)
-        defrost_mode = GetInputValue(14)
-    end subroutine GetInputValues
-    
-    
+
+
     subroutine ExecuteFirstCallOfSimulation
         call SetNumberofParameters(3)
 	    call SetNumberofInputs(14)
@@ -553,17 +539,18 @@ return
 	    call SetNumberStoredVariables(0, 14)
 	    call SetNumberofDiscreteControls(0)
         h = GetSimulationTimeStep()
-        
+
         ! Allocate stored data structure
         if (.not. allocated(s)) then
             allocate(s(Ninstances))
         endif
-        
+
         call ReadParameters()
         call ReadControlFiles(LUcool, LUheat)
+
     end subroutine ExecuteFirstCallOfSimulation
-    
-    
+
+
     subroutine ExecuteStartTime
         call ReadParameters()
         call GetInputValues()
@@ -572,7 +559,7 @@ return
         call SetOutputValue(3, 0.0_wp)  ! Operating mode
         call SetOutputValue(4, 0.0_wp)  ! Defrost mode
         call SetOutputValue(5, 0.0_wp)  ! Defrost recovery penalty
-        
+
         call SetDynamicArrayInitialValue(1, 0.0_wp)  ! error signal
         call SetDynamicArrayInitialValue(2, 0.0_wp)  ! integral value
         call SetDynamicArrayInitialValue(3, 0.0_wp)  ! saturation error
@@ -589,24 +576,41 @@ return
         call SetDynamicArrayInitialValue(14, 0.0_wp)  ! Previous frequency derivative sign
     end subroutine ExecuteStartTime
 
-    
+
     subroutine ExecuteEndOfTimestep
         continue
     end subroutine ExecuteEndOfTimestep
-    
-    
+
+
     subroutine ExecuteLastCallOfSimulation
         continue
-    end subroutine ExecuteLastCallOfSimulation    
-    
-    
+    end subroutine ExecuteLastCallOfSimulation
+
+
     subroutine ReadParameters
         mode_deadband = GetParameterValue(1)
         LUcool = GetParameterValue(2)
         LUheat = GetParameterValue(3)
     end subroutine ReadParameters
-    
-    
+
+    subroutine GetInputValues
+        Tset = GetInputValue(1)
+        Tr = nint(GetInputValue(2)*100.0_wp)/100.0_wp ! round to 0.2 °C to avoid oscillations
+        Toa = GetInputValue(3)
+        onOff = GetInputValue(4)
+        fmin = GetInputValue(5)
+        fmax = GetInputValue(6)
+        Kc = GetInputValue(7)
+        ti = GetInputValue(8)
+        tt = GetInputValue(9)
+        b = GetInputValue(10)
+        N = GetInputValue(11)
+        AFR = GetInputValue(12)
+        mode = GetInputValue(13)
+        defrost_mode = GetInputValue(14)
+    end subroutine GetInputValues
+
+
     subroutine SetOutputValues
         call SetOutputValue(1, fq)  ! Normalized saturated quantized frequency
         call SetOutputValue(2, AFR)  ! Normalized air flow rate
@@ -615,13 +619,13 @@ return
         call SetOutputValue(5, recov_penalty)  ! Defrost recovery penalty
         return
     end subroutine SetOutputValues
-    
-    
+
+
     subroutine GetTRNSYSvariables
         time = GetSimulationTime()
         dt = GetSimulationTimeStep()
         thisUnit = GetCurrentUnit()
         thisType = GetCurrentType()
     end subroutine GetTRNSYSvariables
-    
+
 end subroutine Type3223

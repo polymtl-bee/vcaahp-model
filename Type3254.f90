@@ -1,10 +1,10 @@
 ! +-----------------------------------------------------------------------------+
 ! | TRNSYS Type3254: Variable capacity air-air heat pump with performance files |
 ! +-----------------------------------------------------------------------------+
-    
+
 ! This routine implements an air-air heat pump with variable speed compressor.
 
-    
+
 ! Inputs
 ! --------------------------------------------------------------------------------------------------
 !  # | Variable     | Description                                   | Input  Units  | Internal Units
@@ -81,7 +81,7 @@ use, intrinsic :: iso_fortran_env, only : wp=>real64    ! Defines a constant "wp
 implicit none
 
 type Type3254DataStruct
-    
+
     ! Parameters
     real(wp), allocatable :: entries(:, :, :)
     integer, allocatable :: extents(:, :)
@@ -152,8 +152,38 @@ if (GetIsVersionSigningTime()) then
     return
 endif
 
-call GetTRNSYSvariables()
-call ExecuteSpecialCases()
+time = GetSimulationTime()
+dt = GetSimulationTimeStep()
+thisUnit = GetCurrentUnit()
+thisType = GetCurrentType()
+
+! All the stuff that must be done once at the beginning
+if(GetIsFirstCallofSimulation()) then
+    call ExecuteStartTime()
+    return
+endif
+
+! Parameters must be re-read - indicates another unit of this Type
+if(GetIsReReadParameters()) call ReadParameters()
+
+! Start of the first timestep: no iterations, outputs initial conditions
+if (GetIsStartTime()) then
+    call ExecuteStartTime()
+	return
+endif
+
+! End of timestep call (after convergence or too many iterations)
+if (GetIsEndOfTimestep()) then
+    call ExecuteEndOfTimestep()
+    return
+endif
+
+if (GetIsLastCallofSimulation()) then
+    call ExecuteLastCallOfSimulation()
+    return
+endif
+
+
 call GetInputValues()
 if (ErrorFound()) return
 
@@ -166,7 +196,7 @@ psydat(1) = pr
 psydat(2) = Tr
 psydat(4) = RHr/100.0_wp
 psydat(6) = wr
-if (mode==0) then 
+if (mode==0) then
     call MoistAirProperties(thisUnit, thisType, 1, psymode, 1, psydat, 1, status)
     ! (unit, type, si units used, psych inputs, Twb computed, inputs, warning mgmt, warning occurences)
 else
@@ -179,7 +209,11 @@ RHr = psydat(4)  ! RHr between 0 and 1 (not 0 and 100)
 wr = psydat(6)
 hr = psydat(7)
 dr = psydat(9)
-if (AFR >= 0) mDot = AFR * AFRrated * dr
+if (AFR >= 0) then
+    mDot = AFR * AFRrated * dr  ! use normalized AFR as input if it is positive
+else
+    AFR = mDot / (dr * AFRrated)
+endif
 
 if (mode == 1) then ! compute outdoor air wet bulb
     psydat(1) = poa
@@ -198,11 +232,11 @@ if (freq > 0) then
     if (mode == 0) then
         point(2) = Twbr
         point(3) = Toa
-        point(4) = mDot / (dr * AFRrated)
+        point(4) = AFR
         point(5) = freq! / freqRatedc
     else
         point(2) = Toa
-        point(3) = mDot / (dr * AFRrated)
+        point(3) = AFR
         point(4) = freq! / freqRatedh
     end if
     allocate(interpolationResults(Nout))
@@ -292,23 +326,23 @@ call SetOutputValues()
 return
 
     contains
-    
+
     subroutine ReadPermap
         character (len=maxPathLength) :: permapCoolPath
         character (len=maxPathLength) :: permapHeatPath
         integer :: nTr, nTwbr, nToa, nmDot, nfreq  ! number of entries for each variable
         real(wp) :: filler(Nmax)
-    
+
         ! Ni = GetCurrentUnit()
-    
+
         permapCoolPath = GetLUfileName(LUcool)
         permapHeatPath = GetLUfileName(LUheat)
         call CheckPMfile(permapCoolPath)
         call CheckPMfile(permapHeatPath)
-    
+
         open(LUcool, file=permapCoolPath, status='old')
         open(LUheat, file=permapHeatPath, status='old')
-    
+
             do i = 1, 6  ! Skip 6 first lines
                 read(LUcool, *)
                 read(LUHeat, *)
@@ -337,7 +371,7 @@ return
                 read(LUcool, *)
                 read(LUheat, *)
             end do
-            
+
         nTr = s(Ni)%extents(1, 0)
         nTwbr = s(Ni)%extents(2, 0)
         nToa = s(Ni)%extents(3, 0)
@@ -352,9 +386,9 @@ return
             call SetPMvalue(s(Ni)%QcsMap, i, Qcs, s(Ni)%PMClength)
             call SetPMvalue(s(Ni)%QclMap, i, Qcl, s(Ni)%PMClength)
         end do
-    
+
         close(LUcool)
-        
+
         nTr = s(Ni)%extents(1, 1)
         nToa = s(Ni)%extents(2, 1)
         nmDot = s(Ni)%extents(3, 1)
@@ -366,12 +400,12 @@ return
             call SetPMvalue(s(Ni)%PelhMap, i, Pel, s(Ni)%PMHlength)
             call SetPMvalue(s(Ni)%QhMap, i, Qh, s(Ni)%PMHlength)
         end do
-        
+
         close(LUheat)
-    
+
     end subroutine ReadPermap
-    
-    
+
+
     subroutine CheckPMfile(permapPath)
         logical :: permapFileFound = .false.
         character (len=maxPathLength) :: permapPath
@@ -384,8 +418,8 @@ return
             return
         end if
     end subroutine CheckPMfile
-    
-    
+
+
     function Interpolate(point, mode, Nout)
         real(wp), intent(in) :: point(N)
         real(wp) :: scaled_point(N), LBvalue, UBvalue, sp
@@ -438,8 +472,8 @@ return
         end if
         deallocate(hypercube)
     end function Interpolate
-    
-    
+
+
     function Vertex(i, idx)
         integer, intent(in) :: i, idx(:)
         real(wp) :: Pel, Qcs, Qcl, Qh, vertex(Nout)
@@ -454,8 +488,8 @@ return
             vertex = (/Pel, Qh/)
         end if
     end function Vertex
-    
-    
+
+
     function GetPMvalue(mode, array, idx)
         integer, intent(in) :: idx(:)
         integer :: mode, i, array_idx
@@ -467,16 +501,16 @@ return
         end do
         GetPMvalue = array(array_idx)
     end function GetPMvalue
-    
-    
+
+
     subroutine SetPMvalue(array, idx, value, PMlength)
         integer, intent(in) :: idx, PMlength
         real(wp) :: array(PMlength)
         real(wp), intent(in) :: value
         array(idx) = value
     end subroutine SetPMvalue
-    
-    
+
+
     function findlb(array, value, extent)
         real(wp), intent(in) :: array(:)
         real(wp), intent(in) :: value
@@ -496,8 +530,8 @@ return
         findlb = L - 1
         if (findlb == 0) findlb = 1
     end function findlb
-    
-    
+
+
     function full_adder(a, b, carry_in)
         implicit none
         logical, intent(in) :: a, b, carry_in
@@ -507,7 +541,7 @@ return
         full_adder = (/sum, carry_out /)
     end function full_adder
 
-    
+
     subroutine increment(C)
         implicit none
         logical, intent(inout) :: C(:)
@@ -531,8 +565,8 @@ return
             end do
         end if
     end subroutine increment
-    
-    
+
+
     function Correction(defrost_mode, recov_penalty)
         integer, intent(in) :: defrost_mode
         real(wp), intent(in) :: recov_penalty
@@ -547,14 +581,9 @@ return
             ! add warning
         end if
     end function Correction
-    
-    
-    subroutine ExecuteSpecialCases
-    
-    ! All the stuff that must be done once at the beginning
-    if(GetIsFirstCallofSimulation()) then
 
-  	    ! Tell the TRNSYS engine how this Type works
+
+    subroutine ExecuteFirstCallOfSimulation
   	    call SetNumberofParameters(10)
   	    call SetNumberofInputs(16)
   	    call SetNumberofDerivatives(0)
@@ -562,70 +591,53 @@ return
   	    call SetIterationMode(1)
   	    call SetNumberStoredVariables(0, 4)
   	    call SetNumberofDiscreteControls(0)
-        
+
         ! Allocate stored data structure
         if (.not. allocated(s)) then
             allocate(s(Ninstances))
         endif
-        
+
         call ReadParameters()
         call ReadPermap()
 
-  	    return
+    end subroutine ExecuteFirstCallOfSimulation
 
-    endif
-    
-    ! Start of the first timestep: no iterations, outputs initial conditions
-    if (GetIsStartTime()) then
-        
+
+    subroutine ExecuteStartTime
         call ReadParameters()
         call GetInputValues()
-
-        ! Set outputs to zeros at initial time
-	    call SetOutputValue(1, 0.0_wp)  ! Supply air temperature
-	    call SetOutputValue(2, 0.0_wp)  ! Supply air humidity ratio
-	    call SetOutputValue(3, 0.0_wp)  ! Supply air % RH
-	    call SetOutputValue(4, 0.0_wp)  ! Supply air pressure
-        call SetOutputValue(5, 0.0_wp)  ! Supply air flow rate
-	    call SetOutputValue(6, 0.0_wp)  ! Total cooling rate
-	    call SetOutputValue(7, 0.0_wp)  ! Sensible cooling rate
-	    call SetOutputValue(8, 0.0_wp)  ! Latent cooling rate
-	    call SetOutputValue(9, 0.0_wp)  ! Heat rejection rate
+        call SetOutputValue(1, 0.0_wp)  ! Outlet air temperature
+        call SetOutputValue(2, 0.0_wp)  ! Outlet air humidity ratio
+        call SetOutputValue(3, 0.0_wp)  ! Outlet air % RH
+        call SetOutputValue(4, 0.0_wp)  ! Outlet air pressure
+        call SetOutputValue(5, 0.0_wp)  ! Outlet air flow rate
+        call SetOutputValue(6, 0.0_wp)  ! Total cooling rate
+        call SetOutputValue(7, 0.0_wp)  ! Sensible cooling rate
+        call SetOutputValue(8, 0.0_wp)  ! Latent cooling rate
+        call SetOutputValue(9, 0.0_wp)  ! Heat rejection rate
         call SetOutputValue(10, 0.0_wp)  ! Total heating rate
         call SetOutputValue(11, 0.0_wp)  ! Heat absorption rate
-	    call SetOutputValue(12, 0.0_wp)  ! Total power consumption
-	    call SetOutputValue(13, 0.0_wp)  ! COP
-	    call SetOutputValue(14, 0.0_wp)  ! EER
-	    call SetOutputValue(15, 0.0_wp)  ! Indoor fan power
-	    call SetOutputValue(16, 0.0_wp)  ! Outdoor fan power
-	    call SetOutputValue(17, 0.0_wp)  ! Compressor power
-	    call SetOutputValue(18, 0.0_wp)  ! Condensate temperature
-	    call SetOutputValue(19, 0.0_wp)  ! Condensate flow rate
+        call SetOutputValue(12, 0.0_wp)  ! Total power consumption
+        call SetOutputValue(13, 0.0_wp)  ! COP
+        call SetOutputValue(14, 0.0_wp)  ! EER
+        call SetOutputValue(15, 0.0_wp)  ! Indoor fan power
+        call SetOutputValue(16, 0.0_wp)  ! Outdoor fan power
+        call SetOutputValue(17, 0.0_wp)  ! Compressor power
+        call SetOutputValue(18, 0.0_wp)  ! Condensate temperature
+        call SetOutputValue(19, 0.0_wp)  ! Condensate flow rate
         call SetOutputValue(20, 0.0_wp)  ! Defrost mode
-        
-        call SetDynamicArrayInitialValue(1, 0.0_wp)
-        call SetDynamicArrayInitialValue(2, 0.0_wp)
-        call SetDynamicArrayInitialValue(3, 0.0_wp)
+    end subroutine ExecuteStartTime
 
-        return
 
-    endif
-    
-    ! Parameters must be re-read - indicates another unit of this Type
-    if(GetIsReReadParameters()) call ReadParameters()
-    
-    ! End of timestep call (after convergence or too many iterations)
-    if (GetIsEndOfTimestep()) then
-        return  ! We are done for this call
-    endif
-    
-    if (GetIsLastCallofSimulation()) then
-        return  ! We are done for this call
-    endif
-    
-    end subroutine ExecuteSpecialCases
-    
-    
+    subroutine ExecuteEndOfTimestep
+        continue
+    end subroutine ExecuteEndOfTimestep
+
+    subroutine ExecuteLastCallOfSimulation
+        continue
+    end subroutine ExecuteLastCallOfSimulation
+
+
     subroutine ReadParameters
         psymode = GetParameterValue(1)
         PelcRated = GetParameterValue(2)
@@ -638,8 +650,8 @@ return
         LUcool = GetParameterValue(9)
         LUheat = GetParameterValue(10)
     end subroutine ReadParameters
-    
-    
+
+
     subroutine GetInputValues
         Tr = GetInputValue(1)
         wr = GetInputValue(2)
@@ -658,8 +670,8 @@ return
         PfanI = GetInputValue(15)
         PfanO = GetInputValue(16)
     end subroutine GetInputValues
-    
-    
+
+
     subroutine SetOutputValues
         call SetOutputValue(1, Ts)  ! Outlet air temperature
         call SetOutputValue(2, ws)  ! Outlet air humidity ratio
@@ -682,13 +694,5 @@ return
         call SetOutputValue(19, cmfr)  ! Condensate flow rate
         call SetOutputValue(20, real(defrost_mode, wp))  ! Defrost mode
     end subroutine SetOutputValues
-    
-    
-    subroutine GetTRNSYSvariables
-        !time = getSimulationTime()
-        dt = getSimulationTimeStep()
-        thisUnit = getCurrentUnit()
-        thisType = getCurrentType()
-    end subroutine GetTRNSYSvariables
 
 end subroutine Type3254
