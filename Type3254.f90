@@ -159,7 +159,7 @@ thisType = GetCurrentType()
 
 ! All the stuff that must be done once at the beginning
 if(GetIsFirstCallofSimulation()) then
-    call ExecuteStartTime()
+    call ExecuteFirstCallOfSimulation()
     return
 endif
 
@@ -327,81 +327,81 @@ return
 
     contains
 
-    subroutine ReadPermap
+    subroutine ReadPermap(LUc, LUh)
+        integer, intent(in) :: LUc, LUh
         character (len=maxPathLength) :: permapCoolPath
         character (len=maxPathLength) :: permapHeatPath
-        integer :: nTr, nTwbr, nToa, nmDot, nfreq  ! number of entries for each variable
+        integer :: i, j, LUs(2), LUcool(1), LUheat(1)
+        integer :: nTr, nTwbr, nToa, nAFR, nfreq  ! number of entries for each variable
         real(wp) :: filler(Nmax)
+        LUcool(1) = LUc
+        LUheat(1) = LUh
 
         ! Ni = GetCurrentUnit()
+        LUs = (/LUc, LUh/)
 
-        permapCoolPath = GetLUfileName(LUcool)
-        permapHeatPath = GetLUfileName(LUheat)
+        permapCoolPath = GetLUfileName(LUc)
+        permapHeatPath = GetLUfileName(LUh)
         call CheckPMfile(permapCoolPath)
         call CheckPMfile(permapHeatPath)
+        if (ErrorFound()) return
 
-        open(LUcool, file=permapCoolPath, status='old')
-        open(LUheat, file=permapHeatPath, status='old')
+        open(LUc, file=permapCoolPath, status='old')
+        open(LUh, file=permapHeatPath, status='old')
 
-            do i = 1, 6  ! Skip 6 first lines
-                read(LUcool, *)
-                read(LUHeat, *)
-            enddo
+            call SkipLines(LUs, 6)
         allocate(s(Ni)%extents(Nmax, 0:1))
         do i = 1, Nc
-            read(LUcool, *)  ! Skip a line
-            read(LUcool, *) s(Ni)%extents(i, 0)
+            call SkipLines(LUcool, 1)
+            read(LUc, *) s(Ni)%extents(i, 0)
         end do
         do i = 1, Nh
-            read(LUheat, *)  ! Skip a line
-            read(LUheat, *) s(Ni)%extents(i, 1)
+            call SkipLines(LUheat, 1)
+            read(LUh, *) s(Ni)%extents(i, 1)
         end do
         s(Ni)%PMClength = product(s(Ni)%extents(1:Nc, 0))
         s(Ni)%PMHlength = product(s(Ni)%extents(1:Nh, 1))
         allocate(s(Ni)%entries(maxval(s(Ni)%extents), Nmax, 0:1))
         do i = 1, Nc
-            read(LUcool, *)  ! Skip a line
-            read(LUcool, *) (s(Ni)%entries(j, i, 0), j = 1, s(Ni)%extents(i, 0))
+            call SkipLines(LUcool, 1)
+            read(LUc, *) (s(Ni)%entries(j, i, 0), j = 1, s(Ni)%extents(i, 0))
         end do
         do i = 1, Nh
-            read(LUheat, *)  ! Skip a line
-            read(LUheat, *) (s(Ni)%entries(j, i, 1), j = 1, s(Ni)%extents(i, 1))
+            call SkipLines(LUheat, 1)
+            read(LUh, *) (s(Ni)%entries(j, i, 1), j = 1, s(Ni)%extents(i, 1))
         end do
-            do i = 1, 4  ! Skip 4 lines
-                read(LUcool, *)
-                read(LUheat, *)
-            end do
+            call SkipLines(LUs, 4)
 
         nTr = s(Ni)%extents(1, 0)
         nTwbr = s(Ni)%extents(2, 0)
         nToa = s(Ni)%extents(3, 0)
-        nmDot = s(Ni)%extents(4, 0)
+        nAFR = s(Ni)%extents(4, 0)
         nfreq = s(Ni)%extents(5, 0)
-        allocate(s(Ni)%PelcMap(nTr, nTwbr, nToa, nmDot, nfreq))
-        allocate(s(Ni)%QcsMap(nTr, nTwbr, nToa, nmDot, nfreq))
-        allocate(s(Ni)%QclMap(nTr, nTwbr, nToa, nmDot, nfreq))
+        allocate(s(Ni)%PelcMap(nTr, nTwbr, nToa, nAFR, nfreq))
+        allocate(s(Ni)%QcsMap(nTr, nTwbr, nToa, nAFR, nfreq))
+        allocate(s(Ni)%QclMap(nTr, nTwbr, nToa, nAFR, nfreq))
         do i = 1, s(Ni)%PMClength
-            read(LUcool, *) (filler(j), j = 1, Nc), Pel, Qcs, Qcl
+            read(LUc, *) (filler(j), j = 1, Nc), Pel, Qcs, Qcl
             call SetPMvalue(s(Ni)%PelcMap, i, Pel, s(Ni)%PMClength)
             call SetPMvalue(s(Ni)%QcsMap, i, Qcs, s(Ni)%PMClength)
             call SetPMvalue(s(Ni)%QclMap, i, Qcl, s(Ni)%PMClength)
         end do
 
-        close(LUcool)
+        close(LUc)
 
         nTr = s(Ni)%extents(1, 1)
         nToa = s(Ni)%extents(2, 1)
-        nmDot = s(Ni)%extents(3, 1)
+        nAFR = s(Ni)%extents(3, 1)
         nfreq = s(Ni)%extents(4, 1)
-        allocate(s(Ni)%PelhMap(nTr, nToa, nmDot, nfreq))
-        allocate(s(Ni)%QhMap(nTr, nToa, nmDot, nfreq))
+        allocate(s(Ni)%PelhMap(nTr, nToa, nAFR, nfreq))
+        allocate(s(Ni)%QhMap(nTr, nToa, nAFR, nfreq))
         do i = 1, s(Ni)%PMHlength
-            read(LUheat, *) (filler(j), j = 1, Nh), Pel, Qh
+            read(LUh, *) (filler(j), j = 1, Nh), Pel, Qh
             call SetPMvalue(s(Ni)%PelhMap, i, Pel, s(Ni)%PMHlength)
             call SetPMvalue(s(Ni)%QhMap, i, Qh, s(Ni)%PMHlength)
         end do
 
-        close(LUheat)
+        close(LUh)
 
     end subroutine ReadPermap
 
@@ -418,6 +418,17 @@ return
             return
         end if
     end subroutine CheckPMfile
+
+
+    subroutine SkipLines(LUs, N)
+        integer, intent(in) :: LUs(:)
+        integer :: i, j, N
+        do i = 1, size(LUs)
+            do j = 1, N
+                read(LUs(i), *)
+            end do
+        end do
+    end subroutine SkipLines
 
 
     function Interpolate(point, mode, Nout)
@@ -598,7 +609,7 @@ return
         endif
 
         call ReadParameters()
-        call ReadPermap()
+        call ReadPermap(LUcool, LUheat)
 
     end subroutine ExecuteFirstCallOfSimulation
 
