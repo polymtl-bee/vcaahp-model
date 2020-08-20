@@ -339,13 +339,13 @@ return
 
         ! Ni = GetCurrentUnit()
         LUs = (/LUc, LUh/)
-
+        
         permapCoolPath = GetLUfileName(LUc)
         permapHeatPath = GetLUfileName(LUh)
         call CheckPMfile(permapCoolPath)
         call CheckPMfile(permapHeatPath)
         if (ErrorFound()) return
-
+        
         open(LUc, file=permapCoolPath, status='old')
         open(LUh, file=permapHeatPath, status='old')
 
@@ -382,9 +382,9 @@ return
         allocate(s(Ni)%QclMap(nTr, nTwbr, nToa, nAFR, nfreq))
         do i = 1, s(Ni)%PMClength
             read(LUc, *) (filler(j), j = 1, Nc), Pel, Qcs, Qcl
-            call SetPMvalue(s(Ni)%PelcMap, i, Pel, s(Ni)%PMClength)
-            call SetPMvalue(s(Ni)%QcsMap, i, Qcs, s(Ni)%PMClength)
-            call SetPMvalue(s(Ni)%QclMap, i, Qcl, s(Ni)%PMClength)
+            call SetPMvalue(s(Ni)%PelcMap, RowToColMajorOrder(i, s(Ni)%extents(:, 0)), Pel, s(Ni)%PMClength)
+            call SetPMvalue(s(Ni)%QcsMap, RowToColMajorOrder(i, s(Ni)%extents(:, 0)), Qcs, s(Ni)%PMClength)
+            call SetPMvalue(s(Ni)%QclMap, RowToColMajorOrder(i, s(Ni)%extents(:, 0)), Qcl, s(Ni)%PMClength)
         end do
 
         close(LUc)
@@ -397,8 +397,8 @@ return
         allocate(s(Ni)%QhMap(nTr, nToa, nAFR, nfreq))
         do i = 1, s(Ni)%PMHlength
             read(LUh, *) (filler(j), j = 1, Nh), Pel, Qh
-            call SetPMvalue(s(Ni)%PelhMap, i, Pel, s(Ni)%PMHlength)
-            call SetPMvalue(s(Ni)%QhMap, i, Qh, s(Ni)%PMHlength)
+            call SetPMvalue(s(Ni)%PelhMap, RowToColMajorOrder(i, s(Ni)%extents(:, 1)), Pel, s(Ni)%PMHlength)
+            call SetPMvalue(s(Ni)%QhMap, RowToColMajorOrder(i, s(Ni)%extents(:, 1)), Qh, s(Ni)%PMHlength)
         end do
 
         close(LUh)
@@ -418,8 +418,8 @@ return
             return
         end if
     end subroutine CheckPMfile
-
-
+    
+    
     subroutine SkipLines(LUs, N)
         integer, intent(in) :: LUs(:)
         integer :: i, j, N
@@ -429,6 +429,32 @@ return
             end do
         end do
     end subroutine SkipLines
+    
+    
+    function RowToColMajorOrder(rowIndex, extents) result(colIndex)
+    ! RowToColMajorOrder transforms a row-major order index
+    ! corresponding to a given array shape into a column-major index.
+    !
+    ! Inputs
+    !   rowIndex (integer) : one-based index of an array in row-major order.
+    !   extents (integer array) : shape of the array that rowIndex is indexing.
+    !
+    ! Outputs
+    !   colIndex (integer) : one-based index corresponding to the array element
+    !                        indexed by rowIndex, but with a column-major order.
+        integer, intent(in) :: extents(:), rowIndex
+        integer :: i, colIndex, j, p
+            
+        i = rowIndex - 1  ! rowIndex is one-based
+        colIndex = 1  ! colIndex is one-based
+        p = product(extents)
+        do j = size(extents), 1, -1
+            p = p / extents(j)  ! ("/" performs integer division)
+            colIndex = colIndex + p * modulo(i, extents(j))
+            i = i / extents(j)
+        end do
+        
+    end function RowToColMajorOrder
 
 
     function Interpolate(point, mode, Nout)
