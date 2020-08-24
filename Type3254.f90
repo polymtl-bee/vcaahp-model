@@ -117,24 +117,21 @@ integer :: thisUnit, thisType  ! unit and type numbers
 real(wp) :: time, dt  ! TRNSYS time and timestep
 
 ! Proforma variables
-real(wp) :: Tr, wr, RHr, mDot, pr, Toa, woa, RHoa, poa, freq, PfanI, PfanO  ! Inputs
-integer :: mode, defrost_mode = 1
-real(wp) :: recov_penalty, AFR
+real(wp) :: Tr, wr, RHr, mDot, AFR, pr, Toa, woa, RHoa, poa, freq, PfanI, PfanO  ! Inputs
+integer :: mode, defrost_mode = 1  ! assume that the heat pump starts up at the beginning -> start with transient state
 integer :: psymode, LUcool, LUheat  ! Parameters
 real(wp) :: PelcRated, QcRated, PelhRated, QhRated, AFRrated, freqRatedh, freqRatedc  ! Parameters (rated values)
 real(wp) :: Ts, ws, RHs, ps  ! Outputs (supply conditions)
 real(wp) :: Pel, Qc, Qcs, Qcl, Qrej, Qh, Qabs, Pcomp  ! Outputs (heat and power)
-real(wp) :: COP, EER, Tc, cmfr  ! Outputs (misc)
+real(wp) :: COP, EER, Tc, cmfr, recov_penalty  ! Outputs (misc)
 
 
 ! Local variables
 real(wp) :: psydat(9), Twbr, Twboa, hr, hx, hs, dr
 integer :: status
-integer, parameter :: Ninstances = 1  ! Number of units
+integer, parameter :: Ninstances = 1  ! Number of units (should be provided by a function)
 integer :: Ni = 1  ! temporary, should use a kernel function to get the actual instance number.
-
-! Defrost variables
-real(wp) :: defrost_corr(2) = 0.0_wp  ! correction factors
+real(wp) :: defrost_corr(2) = 0.0_wp  ! defrost correction factors
 
 ! Performance map reading variables
 integer, parameter :: Nc = 5, Nh = 4  ! Number of interpolation variables
@@ -143,7 +140,6 @@ integer :: i, j, N, Noutc = 3, Nouth = 2, Nout
 
 
 ! Interpolation variables
-!real(wp), allocatable :: point(:)
 real(wp), allocatable :: interpolationResults(:), point(:)
 
 ! Set the version number for this Type
@@ -188,10 +184,10 @@ call GetInputValues()
 if (ErrorFound()) return
 
 ! Ni = GetCurrentUnit()
-N = (1-mode) * Nc + mode * Nh
-Nout = Noutc*(1-mode) + Nouth*mode
+N = (1-mode) * Nc + mode * Nh  ! number of interpolation variables, depending on the operating mode.
+Nout = (1-mode) * Noutc + mode * Nouth  ! number of ouput values for the interpolation
 
-! Return air state
+! Determine return air state
 psydat(1) = pr
 psydat(2) = Tr
 psydat(4) = RHr/100.0_wp
@@ -215,7 +211,7 @@ else
     AFR = mDot / (dr * AFRrated)
 endif
 
-if (mode == 1) then ! compute outdoor air wet bulb
+if (mode == 1) then ! compute outdoor air wet bulb for the interpolation
     psydat(1) = poa
     psydat(2) = Toa
     psydat(4) = RHoa/100.0_wp
@@ -233,11 +229,11 @@ if (freq > 0) then
         point(2) = Twbr
         point(3) = Toa
         point(4) = AFR
-        point(5) = freq! / freqRatedc
+        point(5) = freq
     else
         point(2) = Toa
         point(3) = AFR
-        point(4) = freq! / freqRatedh
+        point(4) = freq
     end if
     allocate(interpolationResults(Nout))
     interpolationResults = interpolate(point, mode, Nout)
@@ -257,7 +253,8 @@ else
     Pel = 0
 endif
 
-! Supply air state
+! Determine supply air state
+
 ps = pr  ! Fan pressure drop neglected
 
 ! Moist air state
@@ -265,7 +262,6 @@ if (Qc < Qcs) then
     Qc = Qcs
     ! Add warning
 endif
-
 if (mDot /= 0.0_wp) then
     ws = wr
     if (mode == 0) then
@@ -300,18 +296,20 @@ RHs = psydat(4)
 ws = psydat(6)
 hs = psydat(7)
 
+! Re-calculate heat transfer whose value is modified if saturation occurs
 if (mode == 0 .and. freq > 0) then
-    ! Re-calculate heat transfer whose value is modified if saturation occurs
     Qcs = mDot * (hx - hs)  ! Sensible cooling rate
     Qcl = mDot * (hr - hx)  ! Latent cooling rate
     Qc = Qcs + Qcl  ! Total cooling rate
-    Qrej = Qc + Pel  ! Heat rejection
+    Qrej = Qc + Pel  ! Heat rejection in ambient air
     Qabs = 0.0_wp
 else if (freq > 0) then
     Qrej = 0.0_wp
-    Qabs = Qh - Pel
+    Qabs = Qh - Pel  ! Heat absorption in ambient air
 end if
 if (freq > 0) Pcomp = Pel - PfanI - PfanO  ! Compressor power
+
+! COP, EER and condensate
 if (Pel /= 0.0_wp) then
     COP = (Qc + Qh) / Pel
 else
@@ -382,9 +380,9 @@ return
         allocate(s(Ni)%QclMap(nTr, nTwbr, nToa, nAFR, nfreq))
         do i = 1, s(Ni)%PMClength
             read(LUc, *) (filler(j), j = 1, Nc), Pel, Qcs, Qcl
-            call SetPMvalue(s(Ni)%PelcMap, RowToColMajorOrder(i, s(Ni)%extents(:, 0)), Pel, s(Ni)%PMClength)
-            call SetPMvalue(s(Ni)%QcsMap, RowToColMajorOrder(i, s(Ni)%extents(:, 0)), Qcs, s(Ni)%PMClength)
-            call SetPMvalue(s(Ni)%QclMap, RowToColMajorOrder(i, s(Ni)%extents(:, 0)), Qcl, s(Ni)%PMClength)
+            call SetPMvalue(s(Ni)%PelcMap, RowToColMajorOrder(i, s(Ni)%extents(1:Nc, 0)), Pel, s(Ni)%PMClength)
+            call SetPMvalue(s(Ni)%QcsMap, RowToColMajorOrder(i, s(Ni)%extents(1:Nc, 0)), Qcs, s(Ni)%PMClength)
+            call SetPMvalue(s(Ni)%QclMap, RowToColMajorOrder(i, s(Ni)%extents(1:Nc, 0)), Qcl, s(Ni)%PMClength)
         end do
 
         close(LUc)
@@ -397,8 +395,8 @@ return
         allocate(s(Ni)%QhMap(nTr, nToa, nAFR, nfreq))
         do i = 1, s(Ni)%PMHlength
             read(LUh, *) (filler(j), j = 1, Nh), Pel, Qh
-            call SetPMvalue(s(Ni)%PelhMap, RowToColMajorOrder(i, s(Ni)%extents(:, 1)), Pel, s(Ni)%PMHlength)
-            call SetPMvalue(s(Ni)%QhMap, RowToColMajorOrder(i, s(Ni)%extents(:, 1)), Qh, s(Ni)%PMHlength)
+            call SetPMvalue(s(Ni)%PelhMap, RowToColMajorOrder(i, s(Ni)%extents(1:Nh, 1)), Pel, s(Ni)%PMHlength)
+            call SetPMvalue(s(Ni)%QhMap, RowToColMajorOrder(i, s(Ni)%extents(1:Nh, 1)), Qh, s(Ni)%PMHlength)
         end do
 
         close(LUh)
@@ -453,11 +451,21 @@ return
             colIndex = colIndex + p * modulo(i, extents(j))
             i = i / extents(j)
         end do
-        
     end function RowToColMajorOrder
 
 
-    function Interpolate(point, mode, Nout)
+    function Interpolate(point, mode, Nout) result(interpolation)
+    ! Interpolate performs a piecewise multilinear interpolation on the tables in
+    ! the structure Type3254DataStruct.
+    !
+    ! Inputs
+    !   point (real(wp) array) : point where the interpolation has to be performed.
+    !   mode (integer) : operating mode, cooling (0) or heating(1)
+    !   Nout (integer) : number of tables for the interpolation,
+    !                    also the number of required output values.
+    !
+    ! Outputs
+    !   interpolation (real(wp) array) : results of the interpolation.
         real(wp), intent(in) :: point(N)
         real(wp) :: scaled_point(N), LBvalue, UBvalue, sp
         real(wp), allocatable :: hypercube(:, :)
@@ -466,53 +474,69 @@ return
         integer :: i
         logical :: counter_bool(N)
         integer, intent(in) :: Nout
-        real(wp) :: interpolate(Noutc + Nouth - 1)
+        real(wp) :: interpolation(Noutc + Nouth - 1)
         zeros = 0
         ones = 1
+        
+        ! Map the point to the unit N-hypercube with the table values bounding the point
         do i = 1, N
-            j = findlb(s(Ni)%entries(:, i, mode), point(i), s(Ni)%extents(i, mode))
+            ! Find the index of the lower bound for the ith component of point
+            j = Findlb(s(Ni)%entries(:, i, mode), point(i), s(Ni)%extents(i, mode))
             lb_idx(i) = j
             LBvalue = s(Ni)%entries(j, i, mode)
             UBvalue = s(Ni)%entries(j+1, i, mode)
+            ! Compute the scaled point, and keep it between 0 and 1
             scaled_point(i) = min(1.0_wp, max(0.0_wp, (point(i) - LBvalue) / (UBvalue - LBvalue)))
         end do
         allocate(hypercube(Nout, 2**N))
-        counter_bool = .true.
+        counter_bool = .true.  ! All N values of the binary counter are initialized at 1
         do i = 1, 2**N
-            call increment(counter_bool)
-            counter_int = merge(ones, zeros, counter_bool)
-            idx = lb_idx + counter_int
-            hypercube(:, i) = Vertex(i, idx)
+            call Increment(counter_bool)
+            counter_int = merge(ones, zeros, counter_bool)  ! convert logical to int
+            idx = lb_idx + counter_int  ! index of each of the 2**N vertices
+            hypercube(:, i) = Vertex(idx, mode)  ! Get table values associated with the vertices
         end do
-
+        
+        ! Interpolate using the scaled point and the table values
         do i = 1, N
             sp = scaled_point(i)
             j = N - i
             hypercube(:, :2**j) = (1-sp) * hypercube(:, :2**j) &
                                     + sp * hypercube(:, 2**j+1:2**(j+1))
         end do
-        if (mode == 0) then
+        if (mode == 0) then  ! cooling -> fill the first Noutc values, the rest are zeros
             do i = 1, Noutc
-                interpolate(i) = hypercube(i, 1)
+                interpolation(i) = hypercube(i, 1)
             end do
             do i = Noutc+1, Noutc+Nouth-1
-                interpolate(i) = 0.0_wp
+                interpolation(i) = 0.0_wp
             end do
-        else
-            interpolate(1) = hypercube(1, 1)
+        else  ! heating -> first value is still the input power, values 2 through Noutc are zeros
+            interpolation(1) = hypercube(1, 1)
             do i = 2, Noutc
-                interpolate(i) = 0.0_wp
+                interpolation(i) = 0.0_wp
             end do
             do i = Noutc+1, Noutc+Nouth-1
-                interpolate(i) = hypercube(i-Noutc+1, 1)
+                interpolation(i) = hypercube(i-Noutc+1, 1)
             end do
         end if
         deallocate(hypercube)
     end function Interpolate
 
 
-    function Vertex(i, idx)
-        integer, intent(in) :: i, idx(:)
+    function Vertex(idx, mode)
+    ! Vertex provides the performance map values associated with a certain index,
+    ! taking the operating mode into account.
+    !
+    ! Inputs
+    !   idx (integer array) : index of the table values to be retrieved.
+    !   mode (integer) : operating mode, cooling (0) or heating (1).
+    !
+    ! Outputs
+    !   vertex (real(wp) array) : array with the table values, given in the form
+    !                             (power, sensible capacity, latent capacity) in
+    !                             cooling and (power, total capacity) in heating.
+        integer, intent(in) :: idx(:), mode
         real(wp) :: Pel, Qcs, Qcl, Qh, vertex(Nout)
         if (mode == 0) then
             Pel = GetPMvalue(mode, s(Ni)%PelcMap, idx)
@@ -527,20 +551,37 @@ return
     end function Vertex
 
 
-    function GetPMvalue(mode, array, idx)
+    function GetPMvalue(mode, array, idx) result(value)
+    ! GetPMvalue retrieves the value at a given index in a performance map.
+    !
+    ! Inputs
+    !   mode (integer, 0 or 1) : mode (heating or cooling) associated with the performance map.
+    !   array : performance map, contained in the structure Type3254DataStruct.
+    !   idx (integer array with the same length as the array shape) : index of the element to retrieve.
+    !
+    ! Outputs
+    !   value : element retireved at index idx.
         integer, intent(in) :: idx(:)
         integer :: mode, i, array_idx
+        ! array has a length equal to the number of elements in the appropriate performance map
         real(wp) :: array((1-mode)*s(Ni)%PMClength + mode*s(Ni)%PMHlength)
-        real(wp) :: GetPMvalue
-        array_idx = idx(1)
+        real(wp) :: value
+        array_idx = idx(1)  ! begin with the leftmost index, since arrays are stored in column-major order
         do i = 2, N
             array_idx = array_idx + product(s(Ni)%extents(1:i-1, mode)) * (idx(i) - 1)
         end do
-        GetPMvalue = array(array_idx)
+        value = array(array_idx)
     end function GetPMvalue
 
 
     subroutine SetPMvalue(array, idx, value, PMlength)
+    ! SetPMvalue sets a value in a performance map at a given index.
+    !
+    ! Inputs
+    !   array : performance map, contained in the structure Type3254DataStruct.
+    !   idx (integer) : one-dimensional index of the element to set, in column-major order.
+    !   value (real(wp)) : the value to set at index idx.
+    !   PMlength (integer) : length of the performance map.
         integer, intent(in) :: idx, PMlength
         real(wp) :: array(PMlength)
         real(wp), intent(in) :: value
@@ -548,12 +589,25 @@ return
     end subroutine SetPMvalue
 
 
-    function findlb(array, value, extent)
+    function Findlb(array, value, extent) result(lowerBoundIndex)
+    ! findlb finds the index of the element of an ordered array which is smaller
+    ! and closest to a given value.
+    ! Special cases: If the value is exactly equal to an element of the array
+    ! with index i, the function returns i-1. If the value is smaller than the first
+    ! (and lowest) value of the array, the function returns 1. If the value is higher
+    ! than the last (and largest) value of the array, the function returns size(array) - 1.
+    !
+    ! Inputs
+    !   array (1-D real(wp) array) : array to be searched.
+    !   value (real(wp)) : value to search.
+    !   extent (integer) : size of the array
+    !
+    ! Outputs
+    !   lowerBoundIndex (integer) : index of the lower bound of the value in the array.
         real(wp), intent(in) :: array(:)
         real(wp), intent(in) :: value
         integer, intent(in) :: extent
-        integer :: findlb
-        integer :: L, R, mid
+        integer :: L, R, mid, lowerBoundIndex
         L = 1
         R = extent
         do while (L < R)
@@ -564,22 +618,36 @@ return
                 R = mid
             end if
         end do
-        findlb = L - 1
-        if (findlb == 0) findlb = 1
-    end function findlb
+        lowerBoundIndex = L - 1
+        if (lowerBoundIndex == 0) lowerBoundIndex = 1
+    end function Findlb
 
 
-    function full_adder(a, b, carry_in)
+    function FullAdder(a, b, carry_in) result(results)
+    ! FullAdder implements a full adder, to perform addition on binary numbers.
+    !
+    ! Inputs
+    !   a, b (logicals) : operands of the addition
+    !   carry_in (logical) : carry from the previous stage.
+    !
+    ! Outputs (given as a logical array of size 2)
+    !   sum (logical) : a + b + carry_in (+ being exclusive or).
+    !   carry_out : carry for the next stage.
         implicit none
         logical, intent(in) :: a, b, carry_in
-        logical :: sum, carry_out, full_adder(2)
+        logical :: sum, carry_out, results(2)
         sum = a .neqv. b .neqv. carry_in
         carry_out = a .and. b .or. carry_in .and. (a .neqv. b)
-        full_adder = (/sum, carry_out /)
-    end function full_adder
+        results = (/sum, carry_out /)
+    end function FullAdder
 
 
-    subroutine increment(C)
+    subroutine Increment(C)
+    ! Increment increments a binary counter.
+    !
+    ! Inputs
+    !   C (logical array) : the counter to increment,
+    !                       with the rightmost bit being the lower level.
         implicit none
         logical, intent(inout) :: C(:)
         logical :: sumcarry(2), hasFalse
@@ -589,22 +657,32 @@ return
         do i = 1, N
             if (.not. C(i)) hasFalse = .true.
         end do
-        if (.not. hasFalse) then  ! reset if all true
-            C = .false.
-        else
-            sumcarry = full_adder(C(N), .true., .false.)
+        if (.not. hasFalse) then  ! counter has reached max capacity
+            C = .false.  ! reset counter
+        else  ! increment counter using binary addition
+            sumcarry = FullAdder(C(N), .true., .false.)
             C(N) = sumcarry(1)
             k = N - 1
             do while (sumcarry(2))
-                sumcarry = full_adder(C(k), .false., sumcarry(2))
+                sumcarry = FullAdder(C(k), .false., sumcarry(2))
                 C(k) = sumcarry(1)
                 k = k-1
             end do
         end if
-    end subroutine increment
+    end subroutine Increment
 
 
     function Correction(defrost_mode, recov_penalty)
+    ! Correction provides the correction factor to apply to the input power
+    ! and heating capacity depending on the defrost mode.
+    !
+    ! Inputs
+    !   defrost_mode (integer) : the defrost mode: defrost(0), recovery (1)
+    !                            or steady-state (2)
+    ! Outputs
+    !   correction (real(wp) array) : array containing the power correction
+    !                                 factor at (1) and the capacity correction
+    !                                 factor at (2).
         integer, intent(in) :: defrost_mode
         real(wp), intent(in) :: recov_penalty
         real(wp) :: correction(2)
@@ -634,7 +712,7 @@ return
             allocate(s(Ninstances))
         endif
 
-        call ReadParameters()
+        call ReadParameters()  ! required to get LUcool and LUheat
         call ReadPermap(LUcool, LUheat)
 
     end subroutine ExecuteFirstCallOfSimulation

@@ -55,7 +55,9 @@
 
 module Type3223Data
 
-use, intrinsic :: iso_fortran_env, only : wp=>real64    ! Defines a constant "wp" (working precision) that can be used in real numbers, e.g. 1.0_wp, and sets it to real64 (double precision)
+! Defines a constant "wp" (working precision) that can be used in real numbers,
+! e.g. 1.0_wp, and sets it to real64 (double precision)
+use, intrinsic :: iso_fortran_env, only : wp=>real64
 implicit none
 
 type Type3223DataStruct
@@ -82,7 +84,7 @@ subroutine Type3223
 !export this subroutine for its use in external DLLs
 !dec$attributes dllexport :: Type3223
 
-use, intrinsic :: iso_fortran_env, only : wp=>real64    ! Defines a constant "wp" (working precision) that can be used in real numbers, e.g. 1.0_wp, and sets it to real64 (double precision)
+use, intrinsic :: iso_fortran_env, only : wp=>real64
 
 use TrnsysConstants
 use TrnsysFunctions
@@ -90,7 +92,9 @@ use Type3223Data
 
 implicit none
 
+integer :: thisUnit, thisType  ! unit and type numbers
 real(wp) :: time, dt  ! TRNSYS time and timestep
+
 real(wp) :: Tset, Tr, Toa ! Temperatures
 real(wp) :: fsat, fq, fmin, fmax  ! Frequencies
 real(wp) :: onOff, Kc, ti, tt, b  ! Controller parameters
@@ -109,7 +113,6 @@ logical :: modulate, fmaxBoost
 integer :: defrost_mode
 real(wp) :: t_ld, t_uc, t_oc, Toa_av, Toa_av_prev, t_rec, recov_penalty
 
-integer :: thisUnit, thisType    ! unit and type numbers
 
 ! Set the version number for this Type
 if (GetIsVersionSigningTime()) then
@@ -148,13 +151,13 @@ if (GetIsLastCallofSimulation()) then
     return
 endif
 
-
 call GetInputValues()
 if (ErrorFound()) return
 
-e = Tset - Tr
-if (mode == -1) then
-    prev_mode = int(GetDynamicArrayValueLastTimestep(4))
+e = Tset - Tr  ! control error
+if (mode == -1) then  ! automatic setting of the operating mode
+    prev_mode = int(GetDynamicArrayValueLastTimestep(4))  ! mode at the last timestep
+    ! Use a deadband to avoid oscillations. Inside the deadband, the previous mode is kept.
     if (e < -mode_deadband / 2.0_wp) then
         mode = 0
     else if (e > mode_deadband / 2.0_wp) then
@@ -163,11 +166,12 @@ if (mode == -1) then
         mode = prev_mode
     endif
 end if
-call SetDynamicArrayValueThisIteration(4, real(mode, wp))
+call SetDynamicArrayValueThisIteration(4, real(mode, wp))  ! store mode for this timestep
 
 
 ! Get air flow rate
 old_AFRlevel = int(GetDynamicArrayValueLastTimestep(5))
+! Get the air flow rate level from the setpoint error and hysteresis loops
 AFRlevel = GetLevel(s(Ni)%AFRerror(:, mode), s(Ni)%AFRdb(:, mode), e, old_AFRlevel, mode)
 if (AFR < 0) AFR = s(Ni)%AFR(AFRlevel, mode)
 call SetDynamicArrayValueThisIteration(5, real(AFRlevel, wp))
@@ -183,27 +187,27 @@ if (fmax < 0.0_wp) then
     if (mode == 0) then
         old_zone = int(GetDynamicArrayValueLastTimestep(6))
         t_boost = int(GetDynamicArrayValueLastTimestep(7))
-        zone = GetLevel(s(Ni)%Toa2, s(Ni)%db2, Toa, old_zone, 1)
+        zone = GetLevel(s(Ni)%Toa2, s(Ni)%db2, Toa, old_zone, 1)  ! determine the temperature zone (fig. 3.5)
         call SetDynamicArrayValueThisIteration(6, real(zone, wp))
-        AFR2level = FindLevel(s(Ni)%AFR2, AFR, s(Ni)%nAFR2)
+        AFR2level = FindLevel(s(Ni)%AFR2, AFR, s(Ni)%nAFR2)  ! find level corresponding to the AFR value
         if (AFR2level > s(Ni)%nAFR2) AFR2level = s(Ni)%nAFR2
-        if (t_boost < s(Ni)%t_boost_max) then
+        if (t_boost < s(Ni)%t_boost_max) then  ! use the boost frequency only for a limited time period
             fmax = s(Ni)%f2(zone, AFR2level)
-        else
+        else  ! If the maximum time is exceeded, use the steady-state maximum frequency (scaled down version of f2)
             fmax = s(Ni)%f2(zone, AFR2level) * s(Ni)%f1f2
         end if
         fmaxBoost = .true.
     else
-        fmax = s(Ni)%f2heat
+        fmax = s(Ni)%f2heat  ! single value for the maximum frequency in heating mode
     end if
 end if
 
 ! Assign fixed frequency value depending on error signal
 modulate = .false.
-if (e < s(Ni)%e_min(mode)) then
-    fq = (1 - real(mode, wp)) * fmax
-else if (e > s(Ni)%e_max(mode)) then
-    fq = real(mode, wp) * fmax
+if (e < s(Ni)%e_min(mode)) then  ! e < e_min
+    fq = (1 - real(mode, wp)) * fmax  ! 0 in heating, fmax in cooling
+else if (e > s(Ni)%e_max(mode)) then  ! e > e_max
+    fq = real(mode, wp) * fmax  ! fmax in heating, 0 in cooling
 else
     modulate = .true.
 end if
@@ -233,36 +237,36 @@ if (modulate) then
         endif
         if (f > fmin / 2.0_wp) then
             fsat = min(fmax, max(fmin, f))  ! Saturated signal
-            fq = (1.0_wp * floor(N * fsat)) / (1.0_wp * N)
+            fq = (1.0_wp * floor(N * fsat)) / (1.0_wp * N)  ! Qunantized signal
         else
             fq = 0.0_wp
         end if
     endif
-else if (ti > 0.0_wp) then
+else if (ti > 0.0_wp) then  ! even though there is no frequency modulation, the integral must be updated
     fi = fi_old + Kc / ti * h * (e + e_old) / 2
 end if
 call StorePIvalues()
 
 
-t_mnt_min = 5.0_wp / 60.0_wp
+t_mnt_min = 5.0_wp / 60.0_wp  ! minimum monotonous operation time
 t_mnt = GetDynamicArrayValueLastTimestep(12)
 fq_prev = GetDynamicArrayValueLastTimestep(13)
 dfdt_sign_prev = int(GetDynamicArrayValueLastTimestep(14))
-if (fq > fq_prev) then
+if (fq > fq_prev) then  ! frequency is increasing
     dfdt_sign = 1
-else if (fq < fq_prev) then
+else if (fq < fq_prev) then  ! frequency is decreasing
     dfdt_sign = -1
 else
     dfdt_sign = dfdt_sign_prev
 end if
 
-if (dfdt_sign*dfdt_sign_prev == -1) then
+if (dfdt_sign*dfdt_sign_prev == -1) then  ! previous timestep was a local extremum
     if (t_mnt <= t_mnt_min) then
-        fq = fq_prev
-        t_mnt = t_mnt + dt
-        dfdt_sign = dfdt_sign_prev
+        fq = fq_prev  ! keep the previous frequency value
+        t_mnt = t_mnt + dt  ! increment monotonous frequency timer
+        dfdt_sign = dfdt_sign_prev  ! keep the same direction of frequency evolution
     else
-        t_mnt = 0.0_wp
+        t_mnt = 0.0_wp  ! reset the timer
     end if
 else
     t_mnt = t_mnt + dt
@@ -271,14 +275,14 @@ call SetDynamicArrayValueThisIteration(12, t_mnt)
 call SetDynamicArrayValueThisIteration(13, fq)
 call SetDynamicArrayValueThisIteration(14, real(dfdt_sign, wp))
 
-if (abs(fq - fmax) < 0.001_wp .and. fmaxBoost) then
-    t_boost = t_boost + dt
+if (abs(fq - fmax) < 0.001_wp .and. fmaxBoost) then  ! Heat pump operates at boost frequency
+    t_boost = t_boost + dt  ! increment the boost frequency timer
 else
-    t_boost = 0.0_wp
+    t_boost = 0.0_wp  ! reset the timer
 endif
 call SetDynamicArrayValueThisIteration(7, real(t_boost, wp))
 
-if (defrost_mode == -1 .and. mode == 1) call SetDefrostMode(defrost_mode)
+if (defrost_mode == -1 .and. mode == 1) call SetDefrostMode(defrost_mode)  ! automatic defrost selection
 if (mode == 1) recov_penalty = RecoveryPenalty(t_ld, t_rec)  ! if () because risk of division by zero
 
 call SetOutputValues()
@@ -397,33 +401,72 @@ return
     end subroutine SkipLines
 
 
-    function GetLevel(centers, deadbands, value, old_level, hyst_dir)
+    function GetLevel(centers, deadbands, value, old_level, hyst_dir) result(level)
+    ! GetLevel determines the output (called the "level") of an hysteresis function
+    ! based on an input value and the old level. The hysteresis is characterised by
+    ! its center(s), deadband(s), and its direction (ascending or descending).
+    ! There can be several cascading hysteresis; in that case all centers and deadbands
+    ! must be given as arrays. An exemple with two ascending hystersis loops would look
+    ! like this :
+    !                                  <---deadband2--->
+    !                                  ---------------------    Level 3
+    !                                  |       |       |
+    !                                  |       |       |
+    !       <-deadband1->              |       |       |
+    !       -----------------------------------|--------        Level 2
+    !       |     |     |                   center2
+    !       |     |     |
+    !       |     |     |
+    !   ----------|------                                       Level 1
+    !          center1
+    !
+    ! Inputs
+    !   centers (real(wp) array) : centers of the hysteresis deadbands.
+    !   deadbands (real(wp) array) : width of each deadband.
+    !   value (real(wp)) : input value.
+    !   old_level (integer) : the output value at the previous timestep
+    !                         (NOT at the previous iteration).
+    !   hyst_dir (integer) : direction of the hysteresis loops (0 = descending, 1 = ascending) A VERIFIER
+    !
+    ! Outputs
+    !   level (integer) : the output value for the current timestep.
         real(wp), intent(in) :: centers(:), deadbands(:), value
         integer, intent(in) :: old_level, hyst_dir
         real(wp) :: hdb(size(deadbands))
-        integer :: level, GetLevel, idx
+        integer :: level, idx
         hdb = deadbands / 2.0_wp  ! half deadbands
         level = FindLevel(centers, value, size(centers))
         idx = level
-        if (level == 1) idx = 2
-        if (level == size(centers) + 1) idx = size(centers)
-        if (value < centers(idx-1) + hdb(idx-1)) then
+        if (value < centers(idx-1) + hdb(idx-1) .and. level > 1) then
             if (old_level < level .and. hyst_dir == 1) level = level - 1
-            if (old_level < level .and. hyst_dir == 0) level = level + 1
+            if (old_level > level .and. hyst_dir == 0) level = level + 1
         else if (value > centers(idx) - hdb(idx)) then
             if (old_level > level .and. hyst_dir == 1) level = level + 1
-            if (old_level > level .and. hyst_dir == 0) level = level - 1
+            if (old_level < level .and. hyst_dir == 0) level = level - 1
         end if
-        GetLevel = level
     end function GetLevel
 
-    function FindLevel(array, value, extent)
+    
+    function FindLevel(array, value, extent) result(level)
+    ! FindLevel finds the level among the (ordered) array of centers.
+    ! If the value v is located in the interval A(i) < v < A(i+1)
+    ! where A is the array, the function returns i+1. If v = A(i),
+    ! then it returns i. Finally, if v < A(1), the function returns 1,
+    ! and if v > A(end), it returns size(A) + 1.
+    !
+    ! Inputs
+    !   array (real(wp) array) : array with values in ascending order.
+    !   value (real(wp)) : value to search in the array.
+    !   extent (integer) : size of the array.
+    !
+    ! Outputs
+    !   level (integer) : level of the value in the array.
         real(wp), intent(in) :: array(:), value
         integer, intent(in) :: extent
-        integer :: FindLevel
+        integer :: level
         integer :: L, R, mid
         if (value > array(extent)) then
-            FindLevel = extent + 1
+            level = extent + 1
         else
             L = 1
             R = extent
@@ -435,15 +478,25 @@ return
                     R = mid
                 end if
             end do
-            FindLevel = L
+            level = L
         end if
     end function FindLevel
 
 
     subroutine SetDefrostMode(defrost_mode)
+    ! SetDefrostMode chooses the defrost mode based on different parameters
+    ! located in the global scope.
+    !
+    ! Inputs
+    !   defrost_mode (integer) : variable to which the subroutine assigns the
+    !                            defrost mode:
+    !                               0 = defrost operation
+    !                               1 = recovery
+    !                               2 = steady-state operation
         integer :: defrost_mode
         real(wp) :: Tcutoff, t_cycle, t_h, t_df
         real(wp) :: a, b, c, d, m, p, Tmin
+        ! regression parameters
         a = s(Ni)%t_h(1) / 60.0_wp
         b = s(Ni)%t_h(2) / 60.0_wp
         c = s(Ni)%t_h(3)
@@ -455,7 +508,7 @@ return
 
         call RecallStoredDefrostValues()
 
-        Toa_av = (t_ld*Toa_av_prev + dt*Toa) / (t_ld + dt)
+        Toa_av = (t_ld*Toa_av_prev + dt*Toa) / (t_ld + dt)  ! update mean temperature
         t_h = a + b * exp(c * (Toa_av + d))
         if (Toa_av >= Tmin) then
             t_rec = m * Toa_av + p
@@ -522,11 +575,21 @@ return
         Toa_av_prev = GetDynamicArrayValueLastTimestep(11)
     end subroutine RecallStoredDefrostValues
 
-    function RecoveryPenalty(t_ld, t_rec)
+    
+    function RecoveryPenalty(t_ld, t_rec) result(penalty)
+    ! RecoveryPenalty computes the capacity correction factor in recovery mode,
+    ! after the defrost is finished.
+    !
+    ! Inputs
+    !   t_ld (real(wp)) : the time since the end of the last defrost.
+    !   t_rec (real(wp)) : the duration of the recovery (between defrost and steady-state).
+    !
+    ! Outputs
+    !   penalty (real(wp)) : the recovery penalty (between 0 and 1).
         real(wp), intent(in) :: t_ld, t_rec
-        real(wp) :: recoveryPenalty, t_dimless
+        real(wp) :: penalty, t_dimless
         t_dimless = t_ld / t_rec
-        recoveryPenalty = 2*t_dimless - t_dimless**2
+        penalty = 2*t_dimless - t_dimless**2
     end function RecoveryPenalty
 
 
@@ -545,7 +608,7 @@ return
             allocate(s(Ninstances))
         endif
 
-        call ReadParameters()
+        call ReadParameters()  ! required to get LUcool and LUheat
         call ReadControlFiles(LUcool, LUheat)
 
     end subroutine ExecuteFirstCallOfSimulation
