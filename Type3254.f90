@@ -18,7 +18,7 @@
 !  7 | woa          | Outdoor air humidity ratio                    | -             | -
 !  8 | RHoa         | Outdoor air realtive humidity                 | % (base 100)  | -
 !  9 | poa          | Outdoor air pressure                          | atm           | atm
-! 10 | freq         | Compressor frequency                          | 1/s           | 1/s
+! 10 | freq         | Normalized compressor frequency              | -             | -
 ! 11 | AFR          | Inlet (return) normalized air flow rate       | -             | -
 ! 12 | mode         | 0 = cooling mode                              | -             | -
 !                   | 1 = heating mode                              |               |
@@ -68,9 +68,10 @@
 ! 15 | PfanI        | Indoor fan power                              | kJ/h          | kJ/h
 ! 16 | PfanO        | Outdoor fan power                             | kJ/h          | kJ/h
 ! 17 | Pcomp        | Compressor power                              | kJ/h          | kJ/h
-! 18 | Tc           | Condensate temperature                        | °C            | °C
-! 19 | cmfr         | Condensate mass flow rate                     | kg/h          | kg/h
-! 20 | defrost_mode | 0 = defrost (off) mode                        | -             | -
+! 18 | fComp        | Compressor frequency                          | 1/s           | 1/s
+! 19 | Tc           | Condensate temperature                        | °C            | °C
+! 20 | cmfr         | Condensate mass flow rate                     | kg/h          | kg/h
+! 21 | defrost_mode | 0 = defrost (off) mode                        | -             | -
 !                   | 1 = Recovery mode (transient)                 |               |
 !                   | 2 = Steady-state mode                         |               |
 ! --------------------------------------------------------------------------------------------------
@@ -123,7 +124,7 @@ integer :: psymode, LUcool, LUheat  ! Parameters
 real(wp) :: PelcRated, QcRated, PelhRated, QhRated, AFRrated, freqRatedh, freqRatedc  ! Parameters (rated values)
 real(wp) :: Ts, ws, RHs, ps  ! Outputs (supply conditions)
 real(wp) :: Pel, Qc, Qcs, Qcl, Qrej, Qh, Qabs, Pcomp  ! Outputs (heat and power)
-real(wp) :: COP, EER, Tc, cmfr, recov_penalty  ! Outputs (misc)
+real(wp) :: fComp, COP, EER, Tc, cmfr, recov_penalty  ! Outputs (misc)
 
 
 ! Local variables
@@ -181,6 +182,7 @@ endif
 
 
 call GetInputValues()
+fComp = freq * ((1-mode) * freqRatedc + mode * freqRatedh)
 if (ErrorFound()) return
 
 ! Ni = GetCurrentUnit()
@@ -337,13 +339,13 @@ return
 
         ! Ni = GetCurrentUnit()
         LUs = (/LUc, LUh/)
-        
+
         permapCoolPath = GetLUfileName(LUc)
         permapHeatPath = GetLUfileName(LUh)
         call CheckPMfile(permapCoolPath)
         call CheckPMfile(permapHeatPath)
         if (ErrorFound()) return
-        
+
         open(LUc, file=permapCoolPath, status='old')
         open(LUh, file=permapHeatPath, status='old')
 
@@ -416,8 +418,8 @@ return
             return
         end if
     end subroutine CheckPMfile
-    
-    
+
+
     subroutine SkipLines(LUs, N)
         integer, intent(in) :: LUs(:)
         integer :: i, j, N
@@ -427,8 +429,8 @@ return
             end do
         end do
     end subroutine SkipLines
-    
-    
+
+
     function RowToColMajorOrder(rowIndex, extents) result(colIndex)
     ! RowToColMajorOrder transforms a row-major order index
     ! corresponding to a given array shape into a column-major index.
@@ -442,7 +444,7 @@ return
     !                        indexed by rowIndex, but with a column-major order.
         integer, intent(in) :: extents(:), rowIndex
         integer :: i, colIndex, j, p
-            
+
         i = rowIndex - 1  ! rowIndex is one-based
         colIndex = 1  ! colIndex is one-based
         p = product(extents)
@@ -477,7 +479,7 @@ return
         real(wp) :: interpolation(Noutc + Nouth - 1)
         zeros = 0
         ones = 1
-        
+
         ! Map the point to the unit N-hypercube with the table values bounding the point
         do i = 1, N
             ! Find the index of the lower bound for the ith component of point
@@ -496,7 +498,7 @@ return
             idx = lb_idx + counter_int  ! index of each of the 2**N vertices
             hypercube(:, i) = Vertex(idx, mode)  ! Get table values associated with the vertices
         end do
-        
+
         ! Interpolate using the scaled point and the table values
         do i = 1, N
             sp = scaled_point(i)
@@ -702,7 +704,7 @@ return
   	    call SetNumberofParameters(10)
   	    call SetNumberofInputs(16)
   	    call SetNumberofDerivatives(0)
-  	    call SetNumberofOutputs(20)
+  	    call SetNumberofOutputs(21)
   	    call SetIterationMode(1)
   	    call SetNumberStoredVariables(0, 4)
   	    call SetNumberofDiscreteControls(0)
@@ -738,9 +740,10 @@ return
         call SetOutputValue(15, 0.0_wp)  ! Indoor fan power
         call SetOutputValue(16, 0.0_wp)  ! Outdoor fan power
         call SetOutputValue(17, 0.0_wp)  ! Compressor power
-        call SetOutputValue(18, 0.0_wp)  ! Condensate temperature
-        call SetOutputValue(19, 0.0_wp)  ! Condensate flow rate
-        call SetOutputValue(20, 0.0_wp)  ! Defrost mode
+        call SetOutputValue(18, 0.0_wp)  ! Compressor frequency
+        call SetOutputValue(19, 0.0_wp)  ! Condensate temperature
+        call SetOutputValue(20, 0.0_wp)  ! Condensate flow rate
+        call SetOutputValue(21, 0.0_wp)  ! Defrost mode
     end subroutine ExecuteStartTime
 
 
@@ -805,9 +808,10 @@ return
         call SetOutputValue(15, PfanI)  ! Indoor fan power
         call SetOutputValue(16, PfanO)  ! Outdoor fan power
         call SetOutputValue(17, Pcomp)  ! Compressor power
-        call SetOutputValue(18, Tc)  ! Condensate temperature
-        call SetOutputValue(19, cmfr)  ! Condensate flow rate
-        call SetOutputValue(20, real(defrost_mode, wp))  ! Defrost mode
+        call SetOutputValue(18, fComp)  ! Compressor frequency
+        call SetOutputValue(19, Tc)  ! Condensate temperature
+        call SetOutputValue(20, cmfr)  ! Condensate flow rate
+        call SetOutputValue(21, real(defrost_mode, wp))  ! Defrost mode
     end subroutine SetOutputValues
 
 end subroutine Type3254

@@ -43,7 +43,7 @@ __
 __
 __
 __
-46
+47
 Return air temperature
 SN
 1
@@ -211,7 +211,7 @@ real
 0
 atm
 Pressure
-Compressor frequency
+Normalized compressor frequency
 SN
 1
 The frequency of the compressor, to be provided if an external controller is used.
@@ -222,10 +222,10 @@ real
 0.0
 +Inf
 [ ; ]
-0.0
+1.0
 0
-1/S
-Frequency
+any
+any
 Outlet air humidity ratio
 SN
 1
@@ -466,6 +466,21 @@ real
 0
 kJ/hr
 Power
+Compressor frequency
+SN
+1
+
+simple
+real
+2
++
+0.0
++Inf
+[ ; ]
+0
+0
+1/S
+Frequency
 Condensate temperature
 SN
 1
@@ -864,7 +879,7 @@ Logical Unit - heating mode
 1
 100
 0
-19
+20
 0
 
 
