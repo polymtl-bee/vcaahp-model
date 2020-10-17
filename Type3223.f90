@@ -127,8 +127,8 @@ thisType = GetCurrentType()
 
 ! All the stuff that must be done once at the beginning
 if(GetIsFirstCallofSimulation()) then
-	call ExecuteFirstCallOfSimulation()
-	return
+    call ExecuteFirstCallOfSimulation()
+    return
 endif
 
 ! Parameters must be re-read - indicates another unit of this Type
@@ -137,7 +137,7 @@ if(GetIsReReadParameters()) call ReadParameters()
 ! Start of the first timestep: no iterations, outputs initial conditions
 if (GetIsStartTime()) then
     call ExecuteStartTime()
-	return
+    return
 endif
 
 ! End of timestep call (after convergence or too many iterations)
@@ -237,7 +237,7 @@ if (modulate) then
         endif
         if (f > fmin / 2.0_wp) then
             fsat = min(fmax, max(fmin, f))  ! Saturated signal
-            fq = (1.0_wp * floor(N * fsat)) / (1.0_wp * N)  ! Qunantized signal
+            fq = (1.0_wp * floor(N * fsat)) / (1.0_wp * N)  ! Quantized signal
         else
             fq = 0.0_wp
         end if
@@ -434,13 +434,30 @@ return
         integer, intent(in) :: old_level, hyst_dir
         real(wp) :: hdb(size(deadbands))
         integer :: level, idx
+        logical :: valueInLowDb, valueInHighDb
         hdb = deadbands / 2.0_wp  ! half deadbands
         level = FindLevel(centers, value, size(centers))
-        idx = level
-        if (value < centers(idx-1) + hdb(idx-1) .and. level > 1) then
+        
+        ! Check whether the value is within a deadband
+        if (level == 1) then
+            valueInLowDb = .false.
+            valueInHighDb = value > centers(1) + hdb(1)
+        else if (level == size(centers) + 1) then
+            valueInLowDb = value < centers(size(centers)) + hdb(size(hdb))
+            valueInHighDb = .false.
+        else
+            valueInLowDb = value < centers(level - 1) + hdb(level - 1)
+            valueInHighDb = value > centers(level) + hdb(level)
+        end if
+        
+        ! FindLevel works for ascending hysteresis -> adjust level if descending
+        if (hyst_dir == 0) level = size(centers) + 2 - level
+        
+        ! If the value is within a deadband, adjust the level based on the old level.
+        if (valueInLowDb) then
             if (old_level < level .and. hyst_dir == 1) level = level - 1
             if (old_level > level .and. hyst_dir == 0) level = level + 1
-        else if (value > centers(idx) - hdb(idx)) then
+        else if (valueInHighDb) then
             if (old_level > level .and. hyst_dir == 1) level = level + 1
             if (old_level < level .and. hyst_dir == 0) level = level - 1
         end if
@@ -495,7 +512,7 @@ return
     !                               2 = steady-state operation
         integer :: defrost_mode
         real(wp) :: Tcutoff, t_cycle, t_h, t_df
-        real(wp) :: a, b, c, d, m, p, Tmin
+        real(wp) :: a, b, c, d, m, p, Tmin, Tmax
         ! regression parameters
         a = s(Ni)%t_h(1) / 60.0_wp
         b = s(Ni)%t_h(2) / 60.0_wp
@@ -504,13 +521,16 @@ return
         m = s(Ni)%t_rec(1) / 60.0_wp
         p = s(Ni)%t_rec(2) / 60.0_wp
         Tmin = s(Ni)%Tmin
+        Tmax = -p / m  ! temperature at which t_rec becomes zero
         t_df = s(Ni)%t_df / 60.0_wp
 
         call RecallStoredDefrostValues()
 
         Toa_av = (t_ld*Toa_av_prev + dt*Toa) / (t_ld + dt)  ! update mean temperature
         t_h = a + b * exp(c * (Toa_av + d))
-        if (Toa_av >= Tmin) then
+        if (Toa_av > Tmax) then
+            t_rec = 0.0_wp
+        else if (Toa_av >= Tmin) then
             t_rec = m * Toa_av + p
         else
             t_rec = 37.0_wp / 60.0_wp
@@ -588,8 +608,12 @@ return
     !   penalty (real(wp)) : the recovery penalty (between 0 and 1).
         real(wp), intent(in) :: t_ld, t_rec
         real(wp) :: penalty, t_dimless
-        t_dimless = t_ld / t_rec
-        penalty = 2*t_dimless - t_dimless**2
+        if (t_rec < 1e-15) then
+            penalty = 1.0_wp
+        else
+            t_dimless = t_ld / t_rec
+            penalty = 2*t_dimless - t_dimless**2
+        end if
     end function RecoveryPenalty
 
 

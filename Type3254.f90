@@ -189,6 +189,7 @@ if (ErrorFound()) return
 N = (1-mode) * Nc + mode * Nh  ! number of interpolation variables, depending on the operating mode.
 Nout = (1-mode) * Noutc + mode * Nouth  ! number of ouput values for the interpolation
 
+
 ! Determine return air state
 psydat(1) = pr
 psydat(2) = Tr
@@ -339,13 +340,13 @@ return
 
         ! Ni = GetCurrentUnit()
         LUs = (/LUc, LUh/)
-
+        
         permapCoolPath = GetLUfileName(LUc)
         permapHeatPath = GetLUfileName(LUh)
         call CheckPMfile(permapCoolPath)
         call CheckPMfile(permapHeatPath)
         if (ErrorFound()) return
-
+        
         open(LUc, file=permapCoolPath, status='old')
         open(LUh, file=permapHeatPath, status='old')
 
@@ -418,8 +419,8 @@ return
             return
         end if
     end subroutine CheckPMfile
-
-
+    
+    
     subroutine SkipLines(LUs, N)
         integer, intent(in) :: LUs(:)
         integer :: i, j, N
@@ -429,8 +430,8 @@ return
             end do
         end do
     end subroutine SkipLines
-
-
+    
+    
     function RowToColMajorOrder(rowIndex, extents) result(colIndex)
     ! RowToColMajorOrder transforms a row-major order index
     ! corresponding to a given array shape into a column-major index.
@@ -444,7 +445,7 @@ return
     !                        indexed by rowIndex, but with a column-major order.
         integer, intent(in) :: extents(:), rowIndex
         integer :: i, colIndex, j, p
-
+            
         i = rowIndex - 1  ! rowIndex is one-based
         colIndex = 1  ! colIndex is one-based
         p = product(extents)
@@ -479,7 +480,7 @@ return
         real(wp) :: interpolation(Noutc + Nouth - 1)
         zeros = 0
         ones = 1
-
+        
         ! Map the point to the unit N-hypercube with the table values bounding the point
         do i = 1, N
             ! Find the index of the lower bound for the ith component of point
@@ -498,7 +499,7 @@ return
             idx = lb_idx + counter_int  ! index of each of the 2**N vertices
             hypercube(:, i) = Vertex(idx, mode)  ! Get table values associated with the vertices
         end do
-
+        
         ! Interpolate using the scaled point and the table values
         do i = 1, N
             sp = scaled_point(i)
