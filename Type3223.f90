@@ -102,11 +102,11 @@ real(wp) :: fsat, fq, fmin, fmax  ! Frequencies
 real(wp) :: onOff, Kc, ti, tt, b  ! Controller parameters
 real(wp) :: e, es, f, fp, fi  ! Controller signals
 real(wp) :: Tset_old, Tr_old, fi_old, es_old, e_old  ! Values of the previous timestep
-real(wp) :: mode_deadband, t_fm_min, nIterMax  ! Parameters
+real(wp) :: mode_deadband, t_fm_min  ! Parameters
 real(wp) :: t_fm  ! time in fixed mode operation
 real(wp) :: fq_prev, t_mnt_min, t_mnt  ! time during wich the frequency must stay monotonic
 integer :: dfdt_sign, dfdt_sign_prev  ! sign of the frequency derivative
-integer :: LUheat, LUcool
+integer :: LUheat, LUcool, nIterMax  ! Parameters
 integer :: N, mode, prev_mode  ! Number of frequency levels, operating mode
 integer :: Ni = 1, Ninstances = 1  ! temporary, should use a kernel function to get the actual instance number.
 integer :: AFRlevel, old_AFRlevel, zone, old_zone, AFR2level, Toalevel
@@ -170,7 +170,7 @@ if (mode == -1) then  ! automatic setting of the operating mode
         else if (e > mode_deadband / 2.0_wp) then
             mode = 1
         else
-            mode = prev_mode
+            mode = int(GetOutputValue(3))  ! take mode at last iteration, instead of last timestep
         end if
         if (mode /= prev_mode) t_fm = 0.0_wp  ! reset timer if the mode has changed
     end if
@@ -214,7 +214,10 @@ end if
 
 ! Assign fixed frequency value depending on error signal
 modulate = .false.
-if (e < s(Ni)%e_min(mode)) then  ! e < e_min
+if (onOff <= 0) then
+    fi = 0.0_wp
+    fq = 0.0_wp
+else if (e < s(Ni)%e_min(mode)) then  ! e < e_min
     fq = (1 - real(mode, wp)) * fmax  ! 0 in heating, fmax in cooling
 else if (e > s(Ni)%e_max(mode)) then  ! e > e_max
     fq = real(mode, wp) * fmax  ! fmax in heating, 0 in cooling
@@ -222,37 +225,37 @@ else
     modulate = .true.
 end if
 
+! Adjust the sign of the error depending on the operating mode
+e = (Tset - Tr) * (2.0_wp * real(mode, wp) - 1.0_wp)
 call RecallStoredPIvalues()
-if (modulate) then
-    e = (Tset - Tr) * (2.0_wp * real(mode, wp) - 1.0_wp)  ! Error
+fq_prev = GetDynamicArrayValueLastTimestep(13)
 
+if (modulate) then
     ! Default values for extra parameters
     if (tt < 0.0_wp) tt = ti
     if (b < 0.0_wp) b = 1.0_wp
 
-    if (onOff <= 0) then
-        f = 0
+    fp = Kc * (b*Tset - Tr) * (2.0_wp * real(mode, wp) - 1.0_wp)  ! Proportional signal
+    if (ti > 0.0_wp) then  ! Integral action
+        fi = fi_old + Kc / ti * dt * (e + e_old) / 2  ! Update the integral (using trapezoidal integration).
     else
-        fp = Kc * (b*Tset - Tr) * (2.0_wp * real(mode, wp) - 1.0_wp)  ! Proportional signal
-        if (ti > 0.0_wp) then  ! Integral action
-            fi = fi_old + Kc / ti * dt * (e + e_old) / 2  ! Update the integral (using trapezoidal integration).
-        else
-            fi = fi_old
-        endif
-        f = fp + fi  ! Unsaturated signal
-        if (tt > 0.0_wp .and. (f < fmin .or. f > fmax)) then
-            es = f - min(fmax, max(fmin, f))  ! Error with saturated signal
-            fi = fi - dt * (es + es_old) / 2 / tt  ! De-saturate integral signal
-            f = fp + fi  ! Re-calculate the unsaturated signal
-        endif
-        if (f > fmin / 2.0_wp) then
-            fsat = min(fmax, max(fmin, f))  ! Saturated signal
-            fq = (1.0_wp * floor(N * fsat)) / (1.0_wp * N)  ! Quantized signal
-        else
-            fq = 0.0_wp
-        end if
+        fi = fi_old
     endif
-else if (ti > 0.0_wp) then  ! even though there is no frequency modulation, the integral must be updated
+    f = fp + fi  ! Unsaturated signal
+    if (tt > 0.0_wp .and. (f < fmin .or. f > fmax)) then
+        es = f - min(fmax, max(fmin, f))  ! Error with saturated signal
+        fi = fi - dt * (es + es_old) / 2 / tt  ! De-saturate integral signal
+        f = fp + fi  ! Re-calculate the unsaturated signal
+    endif
+    if (GetTimestepIteration() > nIterMax) then
+        fq = fq_prev
+    else if (f > fmin / 2.0_wp) then
+        fsat = min(fmax, max(fmin, f))  ! Saturated signal
+        fq = (1.0_wp * floor(N * fsat)) / (1.0_wp * N)  ! Quantized signal
+    else
+        fq = 0.0_wp
+    end if
+else if ((ti > 0.0_wp) .and. (onOff > 0)) then  ! even though there is no frequency modulation, the integral must be updated
     fi = fi_old + Kc / ti * dt * (e + e_old) / 2
 end if
 call StorePIvalues()
@@ -260,7 +263,6 @@ call StorePIvalues()
 
 t_mnt_min = 5.0_wp / 60.0_wp  ! minimum monotonous operation time
 t_mnt = GetDynamicArrayValueLastTimestep(12)
-fq_prev = GetDynamicArrayValueLastTimestep(13)
 dfdt_sign_prev = int(GetDynamicArrayValueLastTimestep(14))
 if (fq > fq_prev) then  ! frequency is increasing
     dfdt_sign = 1
@@ -552,26 +554,27 @@ return
         else
             t_oc = t_oc + dt
         end if
+        
+        t_ld = t_ld + dt  ! increment time since last defrost
 
-        if (t_ld < t_rec) then
+        if (t_ld < t_rec) then  ! recovery
             defrost_mode = 1
-        else if (t_ld < t_h) then
+        else if (t_ld < t_h) then  ! steady-state
             defrost_mode = 2
-        else if (t_uc < t_oc) then
-            t_uc = 0.0_wp
+        else if (t_uc < t_oc) then  ! Toa above treshold
+            t_uc = 0.0_wp  ! reset cutoff temperature timers
             t_oc = 0.0_wp
-            t_ld = t_rec - dt
+            t_ld = t_rec  ! begin steady-state
             defrost_mode = 2
-        else if (t_ld < t_cycle) then
+        else if (t_ld < t_cycle) then  ! defrost
             defrost_mode = 0
-        else
-            t_ld = -dt
+        else  ! end of defrost cycle, reset everything
+            t_ld = 0.0_wp
             t_uc = 0.0_wp
             t_oc = 0.0_wp
-            Toa_av = 0
+            Toa_av = 0.0_wp
             defrost_mode = 1
         end if
-        t_ld = t_ld + dt
         call StoreDefrostValues()
     end subroutine SetDefrostMode
 
@@ -628,7 +631,7 @@ return
 
 
     subroutine ExecuteFirstCallOfSimulation
-        call SetNumberofParameters(4)
+        call SetNumberofParameters(5)
 	    call SetNumberofInputs(14)
 	    call SetNumberofDerivatives(0)
 	    call SetNumberofOutputs(5)
@@ -687,8 +690,9 @@ return
     subroutine ReadParameters
         mode_deadband = GetParameterValue(1)
         t_fm_min = GetParameterValue(2) / 60.0_wp
-        LUcool = GetParameterValue(3)
-        LUheat = GetParameterValue(4)
+        nIterMax = GetParameterValue(3)
+        LUcool = GetParameterValue(4)
+        LUheat = GetParameterValue(5)
     end subroutine ReadParameters
 
     subroutine GetInputValues
