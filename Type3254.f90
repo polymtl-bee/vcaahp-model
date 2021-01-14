@@ -133,6 +133,7 @@ integer :: status
 integer, parameter :: Ninstances = 1  ! Number of units (should be provided by a function)
 integer :: Ni = 1  ! temporary, should use a kernel function to get the actual instance number.
 real(wp) :: defrost_corr(2) = 0.0_wp  ! defrost correction factors
+logical :: pointInPermap
 
 ! Performance map reading variables
 integer, parameter :: Nc = 5, Nh = 4  ! Number of interpolation variables
@@ -189,7 +190,6 @@ if (ErrorFound()) return
 N = (1-mode) * Nc + mode * Nh  ! number of interpolation variables, depending on the operating mode.
 Nout = (1-mode) * Noutc + mode * Nouth  ! number of ouput values for the interpolation
 
-
 ! Determine return air state
 psydat(1) = pr
 psydat(2) = Tr
@@ -238,6 +238,7 @@ if (freq > 0) then
         point(3) = AFR
         point(4) = freq
     end if
+    pointInPermap = InPermapDomain(point, mode)
     allocate(interpolationResults(Nout))
     interpolationResults = interpolate(point, mode, Nout)
     deallocate(point)
@@ -249,12 +250,13 @@ if (freq > 0) then
     Qc = Qcs + Qcl
     deallocate(interpolationResults)
 else
-    Qcs = 0
-    Qcl = 0
-    Qh = 0
-    Qc = 0
-    Pel = 0
+    Qcs = 0.0_wp
+    Qcl = 0.0_wp
+    Qh = 0.0_wp
+    Qc = 0.0_wp
+    Pel = 0.0_wp
 endif
+
 
 ! Determine supply air state
 
@@ -300,17 +302,17 @@ ws = psydat(6)
 hs = psydat(7)
 
 ! Re-calculate heat transfer whose value is modified if saturation occurs
-if (mode == 0 .and. freq > 0) then
+if (mode == 0 .and. freq > 0.0_wp) then
     Qcs = mDot * (hx - hs)  ! Sensible cooling rate
     Qcl = mDot * (hr - hx)  ! Latent cooling rate
     Qc = Qcs + Qcl  ! Total cooling rate
     Qrej = Qc + Pel  ! Heat rejection in ambient air
     Qabs = 0.0_wp
-else if (freq > 0) then
+else if (freq > 0.0_wp) then
     Qrej = 0.0_wp
     Qabs = Qh - Pel  ! Heat absorption in ambient air
 end if
-if (freq > 0) Pcomp = Pel - PfanI - PfanO  ! Compressor power
+if (freq > 0.0_wp) Pcomp = Pel - PfanI - PfanO  ! Compressor power
 
 ! COP, EER and condensate
 if (Pel /= 0.0_wp) then
@@ -321,6 +323,10 @@ endif
 EER = 3.413_wp * COP
 Tc = Ts
 cmfr = mDot * (wr - ws)  ! Condensate flow rate - water balance
+
+if (.not. pointInPermap) then  ! point not in permap -> set output frequency to zero
+    fComp = 0.0_wp
+end if
 
 call SetOutputValues()
 
@@ -440,7 +446,7 @@ return
     !   rowIndex (integer) : one-based index of an array in row-major order.
     !   extents (integer array) : shape of the array that rowIndex is indexing.
     !
-    ! Outputs
+    ! Output
     !   colIndex (integer) : one-based index corresponding to the array element
     !                        indexed by rowIndex, but with a column-major order.
         integer, intent(in) :: extents(:), rowIndex
@@ -467,7 +473,7 @@ return
     !   Nout (integer) : number of tables for the interpolation,
     !                    also the number of required output values.
     !
-    ! Outputs
+    ! Output
     !   interpolation (real(wp) array) : results of the interpolation.
         real(wp), intent(in) :: point(N)
         real(wp) :: scaled_point(N), LBvalue, UBvalue, sp
@@ -535,7 +541,7 @@ return
     !   idx (integer array) : index of the table values to be retrieved.
     !   mode (integer) : operating mode, cooling (0) or heating (1).
     !
-    ! Outputs
+    ! Output
     !   vertex (real(wp) array) : array with the table values, given in the form
     !                             (power, sensible capacity, latent capacity) in
     !                             cooling and (power, total capacity) in heating.
@@ -562,7 +568,7 @@ return
     !   array : performance map, contained in the structure Type3254DataStruct.
     !   idx (integer array with the same length as the array shape) : index of the element to retrieve.
     !
-    ! Outputs
+    ! Output
     !   value : element retireved at index idx.
         integer, intent(in) :: idx(:)
         integer :: mode, i, array_idx
@@ -605,7 +611,7 @@ return
     !   value (real(wp)) : value to search.
     !   extent (integer) : size of the array
     !
-    ! Outputs
+    ! Output
     !   lowerBoundIndex (integer) : index of the lower bound of the value in the array.
         real(wp), intent(in) :: array(:)
         real(wp), intent(in) :: value
@@ -682,7 +688,7 @@ return
     ! Inputs
     !   defrost_mode (integer) : the defrost mode: defrost(0), recovery (1)
     !                            or steady-state (2)
-    ! Outputs
+    ! Output
     !   correction (real(wp) array) : array containing the power correction
     !                                 factor at (1) and the capacity correction
     !                                 factor at (2).
@@ -699,8 +705,47 @@ return
             ! add warning
         end if
     end function Correction
+    
+    
+    function IsIn(value, array, extent)
+    ! Return .true. if the value is within the bounds of the array, .false. otherwise.
+    !
+    ! Inputs
+    !   value (real(wp))
+    !   array (real(wp) array)
+    !   extent (integer) : the extent of the array
+    !
+    ! Output
+    !   isin (logical)
+        real(wp), intent(in) :: array(:)
+        real(wp), intent(in) :: value
+        integer, intent(in) :: extent
+        logical :: isin
+        isin = (array(1) <= value) .and. (value <= array(extent))
+    end function IsIn
 
+    
+    function InPermapDomain(point, mode) result(in_domain)
+    ! Return .true. if the point is located within the performance map domain,
+    ! and .false. otherwise.
+    !
+    ! Inputs
+    !   point (real(wp) array) : point to perform the check with.
+    !   mode (integer) : operating mode to get the adequate performance map entries:
+    !                    cooling (0) or heating(1)
+    !
+    ! Output
+    !   in_domain (logical) : .true. if point is in performance map domain, .false. otherwise.
+        real(wp), intent(in) :: point(N)
+        integer, intent(in) :: mode
+        logical :: in_domain
+        do i = 1, N
+            in_domain = IsIn(point(i), s(Ni)%entries(:, i, mode), s(Ni)%extents(i, mode))
+            if (.not. in_domain) exit
+        end do
+    end function InPermapDomain
 
+        
     subroutine ExecuteFirstCallOfSimulation
   	    call SetNumberofParameters(10)
   	    call SetNumberofInputs(16)
