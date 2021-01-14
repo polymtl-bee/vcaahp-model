@@ -31,11 +31,13 @@
 
 ! Parameters
 ! --------------------------------------------------------------------------------------------------
-!  # | Variable     | Description                                   | Param. Units  | Internal Units
+! # | Variable     | Description                                   | Param. Units  | Internal Units
 ! --------------------------------------------------------------------------------------------------
-!  1 | mode_deadband| Operating mode deadband for automatic mode    | °C            | °C
-!  2 | LUcool       | Logical Unit - cooling mode                   | -             | -
-!  3 | LUheat       | Logical Unit - heating mode                   | -             | -
+! 1 | mode_deadband| Operating mode deadband for automatic mode    | °C            | °C
+! 2 | t_fm_min     | Minimum fixed operating mode duration         | h             | h
+! 3 | nIterMax     | Maximum number of iterations                  | -             | -
+! 4 | LUcool       | Logical Unit - cooling mode                   | -             | -
+! 5 | LUheat       | Logical Unit - heating mode                   | -             | -
 ! --------------------------------------------------------------------------------------------------
 
 ! Outputs
@@ -99,10 +101,10 @@ real(wp) :: Tset, Tr, Toa ! Temperatures
 real(wp) :: fsat, fq, fmin, fmax  ! Frequencies
 real(wp) :: onOff, Kc, ti, tt, b  ! Controller parameters
 real(wp) :: e, es, f, fp, fi  ! Controller signals
-real(wp) :: h ! timestep
 real(wp) :: Tset_old, Tr_old, fi_old, es_old, e_old  ! Values of the previous timestep
-real(wp) :: mode_deadband  ! Parameters
-real(wp) :: t_mnt, t_mnt_min, fq_prev  ! time during wich the frequency must stay monotonic
+real(wp) :: mode_deadband, t_fm_min, nIterMax  ! Parameters
+real(wp) :: t_fm  ! time in fixed mode operation
+real(wp) :: fq_prev, t_mnt_min, t_mnt  ! time during wich the frequency must stay monotonic
 integer :: dfdt_sign, dfdt_sign_prev  ! sign of the frequency derivative
 integer :: LUheat, LUcool
 integer :: N, mode, prev_mode  ! Number of frequency levels, operating mode
@@ -157,16 +159,24 @@ if (ErrorFound()) return
 e = Tset - Tr  ! control error
 if (mode == -1) then  ! automatic setting of the operating mode
     prev_mode = int(GetDynamicArrayValueLastTimestep(4))  ! mode at the last timestep
-    ! Use a deadband to avoid oscillations. Inside the deadband, the previous mode is kept.
-    if (e < -mode_deadband / 2.0_wp) then
-        mode = 0
-    else if (e > mode_deadband / 2.0_wp) then
-        mode = 1
+    t_fm = GetDynamicArrayValueLastTimestep(15)  ! fixed mode operation timer
+    if (t_fm <= t_fm_min) then  ! fixed operating mode duration under minimum time
+        mode = prev_mode  ! keep the same mode
+        t_fm = t_fm + dt  ! increment the timer
     else
-        mode = prev_mode
-    endif
+        ! Use a deadband to avoid oscillations. Inside the deadband, the previous mode is kept.
+        if (e < -mode_deadband / 2.0_wp) then
+            mode = 0
+        else if (e > mode_deadband / 2.0_wp) then
+            mode = 1
+        else
+            mode = prev_mode
+        end if
+        if (mode /= prev_mode) t_fm = 0.0_wp  ! reset timer if the mode has changed
+    end if
 end if
 call SetDynamicArrayValueThisIteration(4, real(mode, wp))  ! store mode for this timestep
+call SetDynamicArrayValueThisIteration(15, t_fm)  ! store fixed operationg mode timer for this timestep
 
 
 ! Get air flow rate
@@ -225,14 +235,14 @@ if (modulate) then
     else
         fp = Kc * (b*Tset - Tr) * (2.0_wp * real(mode, wp) - 1.0_wp)  ! Proportional signal
         if (ti > 0.0_wp) then  ! Integral action
-            fi = fi_old + Kc / ti * h * (e + e_old) / 2  ! Update the integral (using trapezoidal integration).
+            fi = fi_old + Kc / ti * dt * (e + e_old) / 2  ! Update the integral (using trapezoidal integration).
         else
             fi = fi_old
         endif
         f = fp + fi  ! Unsaturated signal
         if (tt > 0.0_wp .and. (f < fmin .or. f > fmax)) then
             es = f - min(fmax, max(fmin, f))  ! Error with saturated signal
-            fi = fi - h * (es + es_old) / 2 / tt  ! De-saturate integral signal
+            fi = fi - dt * (es + es_old) / 2 / tt  ! De-saturate integral signal
             f = fp + fi  ! Re-calculate the unsaturated signal
         endif
         if (f > fmin / 2.0_wp) then
@@ -243,7 +253,7 @@ if (modulate) then
         end if
     endif
 else if (ti > 0.0_wp) then  ! even though there is no frequency modulation, the integral must be updated
-    fi = fi_old + Kc / ti * h * (e + e_old) / 2
+    fi = fi_old + Kc / ti * dt * (e + e_old) / 2
 end if
 call StorePIvalues()
 
@@ -618,14 +628,13 @@ return
 
 
     subroutine ExecuteFirstCallOfSimulation
-        call SetNumberofParameters(3)
+        call SetNumberofParameters(4)
 	    call SetNumberofInputs(14)
 	    call SetNumberofDerivatives(0)
 	    call SetNumberofOutputs(5)
 	    call SetIterationMode(1)
-	    call SetNumberStoredVariables(0, 14)
+	    call SetNumberStoredVariables(0, 15)
 	    call SetNumberofDiscreteControls(0)
-        h = GetSimulationTimeStep()
 
         ! Allocate stored data structure
         if (.not. allocated(s)) then
@@ -647,9 +656,9 @@ return
         call SetOutputValue(4, 0.0_wp)  ! Defrost mode
         call SetOutputValue(5, 0.0_wp)  ! Defrost recovery penalty
 
-        call SetDynamicArrayInitialValue(1, 0.0_wp)  ! error signal
-        call SetDynamicArrayInitialValue(2, 0.0_wp)  ! integral value
-        call SetDynamicArrayInitialValue(3, 0.0_wp)  ! saturation error
+        call SetDynamicArrayInitialValue(1, 0.0_wp)  ! Error signal
+        call SetDynamicArrayInitialValue(2, 0.0_wp)  ! Integral value
+        call SetDynamicArrayInitialValue(3, 0.0_wp)  ! Saturation error
         call SetDynamicArrayInitialValue(4, 0.0_wp)  ! Operating mode
         call SetDynamicArrayInitialValue(5, 1.0_wp)  ! Air flow rate level
         call SetDynamicArrayInitialValue(6, 1.0_wp)  ! Outdoor temperature zone
@@ -661,6 +670,7 @@ return
         call SetDynamicArrayInitialValue(12, 0.0_wp)  ! Time during which the frequency is forced constant
         call SetDynamicArrayInitialValue(13, 0.0_wp)  ! Previous frequency value
         call SetDynamicArrayInitialValue(14, 0.0_wp)  ! Previous frequency derivative sign
+        call SetDynamicArrayInitialValue(15, 0.0_wp)  ! Duration of fixed mode operation
     end subroutine ExecuteStartTime
 
 
@@ -676,8 +686,9 @@ return
 
     subroutine ReadParameters
         mode_deadband = GetParameterValue(1)
-        LUcool = GetParameterValue(2)
-        LUheat = GetParameterValue(3)
+        t_fm_min = GetParameterValue(2) / 60.0_wp
+        LUcool = GetParameterValue(3)
+        LUheat = GetParameterValue(4)
     end subroutine ReadParameters
 
     subroutine GetInputValues
