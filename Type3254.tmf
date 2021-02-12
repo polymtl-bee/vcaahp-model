@@ -43,7 +43,7 @@ __
 __
 __
 __
-47
+48
 Return air temperature
 SN
 1
@@ -757,6 +757,21 @@ integer
 0
 -
 dimensionless
+Force heat pump shutdown
+SN
+1
+Returns 0 if the heat pump works noramlly, and 1 if it is shutdown because of an invalid set of input conditions.
+simple
+real
+2
++
+0
+1
+[ ; ]
+0
+0
+-
+Dimensionless
 0
 0
 0
@@ -879,7 +894,7 @@ Logical Unit - heating mode
 1
 100
 0
-20
+21
 0
 
 

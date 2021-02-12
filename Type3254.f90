@@ -74,6 +74,8 @@
 ! 21 | defrost_mode | 0 = defrost (off) mode                        | -             | -
 !                   | 1 = Recovery mode (transient)                 |               |
 !                   | 2 = Steady-state mode                         |               |
+! 22 | shutdown     | 0 = No (false)                                | -             | -
+!                   | 1 = Yes (true)                                |               |
 ! --------------------------------------------------------------------------------------------------
 
 module Type3254Data
@@ -84,7 +86,7 @@ implicit none
 type Type3254DataStruct
 
     ! Parameters
-    real(wp), allocatable :: entries(:, :, :)
+    real(wp), allocatable :: entries(:, :, :), lbounds(:, :), ubounds(:, :)
     integer, allocatable :: extents(:, :)
     integer :: PMClength, PMHlength  ! Length of the flattened performance map
 
@@ -133,7 +135,7 @@ integer :: status
 integer, parameter :: Ninstances = 1  ! Number of units (should be provided by a function)
 integer :: Ni = 1  ! temporary, should use a kernel function to get the actual instance number.
 real(wp) :: defrost_corr(2) = 0.0_wp  ! defrost correction factors
-logical :: pointInPermap
+logical :: shutdown
 
 ! Performance map reading variables
 integer, parameter :: Nc = 5, Nh = 4  ! Number of interpolation variables
@@ -184,6 +186,7 @@ endif
 
 call GetInputValues()
 fComp = freq * ((1-mode) * freqRatedc + mode * freqRatedh)
+shutdown = .false.
 if (ErrorFound()) return
 
 ! Ni = GetCurrentUnit()
@@ -238,9 +241,8 @@ if (freq > 0) then
         point(3) = AFR
         point(4) = freq
     end if
-    pointInPermap = InPermapDomain(point, mode)
     allocate(interpolationResults(Nout))
-    interpolationResults = interpolate(point, mode, Nout)
+    interpolationResults = Interpolate(point, mode, Nout)
     deallocate(point)
     if (mode == 0) Pel = interpolationResults(1) * PelcRated
     if (mode == 1) Pel = interpolationResults(1) * PelhRated * defrost_corr(1)
@@ -324,9 +326,7 @@ EER = 3.413_wp * COP
 Tc = Ts
 cmfr = mDot * (wr - ws)  ! Condensate flow rate - water balance
 
-if (.not. pointInPermap) then  ! point not in permap -> set output frequency to zero
-    fComp = 0.0_wp
-end if
+if (shutdown) fcomp = 0.0_wp  ! force shutdown -> set output frequency to zero
 
 call SetOutputValues()
 
@@ -358,13 +358,15 @@ return
 
             call SkipLines(LUs, 6)
         allocate(s(Ni)%extents(Nmax, 0:1))
+        allocate(s(Ni)%lbounds(Nmax, 0:1))
+        allocate(s(Ni)%ubounds(Nmax, 0:1))
         do i = 1, Nc
             call SkipLines(LUcool, 1)
-            read(LUc, *) s(Ni)%extents(i, 0)
+            read(LUc, *) s(Ni)%extents(i, 0), s(Ni)%lbounds(i, 0), s(Ni)%ubounds(i, 0)
         end do
         do i = 1, Nh
             call SkipLines(LUheat, 1)
-            read(LUh, *) s(Ni)%extents(i, 1)
+            read(LUh, *) s(Ni)%extents(i, 1), s(Ni)%lbounds(i, 1), s(Ni)%ubounds(i, 1)
         end do
         s(Ni)%PMClength = product(s(Ni)%extents(1:Nc, 0))
         s(Ni)%PMHlength = product(s(Ni)%extents(1:Nh, 1))
@@ -476,60 +478,96 @@ return
     ! Output
     !   interpolation (real(wp) array) : results of the interpolation.
         real(wp), intent(in) :: point(N)
-        real(wp) :: scaled_point(N), LBvalue, UBvalue, sp
+        real(wp) :: scaled_point(N), left, right, sp
         real(wp), allocatable :: hypercube(:, :)
         integer, intent(in) :: mode
         integer, dimension(N) :: idx, lb_idx, counter_int, ones, zeros
         integer :: i
-        logical :: counter_bool(N)
+        logical :: counter_bool(N), increasing(N), in_range
         integer, intent(in) :: Nout
         real(wp) :: interpolation(Noutc + Nouth - 1)
         zeros = 0
         ones = 1
         
-        ! Map the point to the unit N-hypercube with the table values bounding the point
+        ! Check if point is within the operating range before interpolation
+        if (mode == 0) increasing = (/.true., .false., .false., .true., .true./)
+        if (mode == 1) increasing = (/.false., .true., .true., .true./)
+        in_range = .true.
+        shutdown = .false.
         do i = 1, N
-            ! Find the index of the lower bound for the ith component of point
-            j = Findlb(s(Ni)%entries(:, i, mode), point(i), s(Ni)%extents(i, mode))
-            lb_idx(i) = j
-            LBvalue = s(Ni)%entries(j, i, mode)
-            UBvalue = s(Ni)%entries(j+1, i, mode)
-            ! Compute the scaled point, and keep it between 0 and 1
-            scaled_point(i) = min(1.0_wp, max(0.0_wp, (point(i) - LBvalue) / (UBvalue - LBvalue)))
-        end do
-        allocate(hypercube(Nout, 2**N))
-        counter_bool = .true.  ! All N values of the binary counter are initialized at 1
-        do i = 1, 2**N
-            call Increment(counter_bool)
-            counter_int = merge(ones, zeros, counter_bool)  ! convert logical to int
-            idx = lb_idx + counter_int  ! index of each of the 2**N vertices
-            hypercube(:, i) = Vertex(idx, mode)  ! Get table values associated with the vertices
+            if (increasing(i) .and. (point(i) < s(Ni)%lbounds(i, mode)) .or. &
+            (.not. increasing(i)) .and. (point(i) > s(Ni)%ubounds(i, mode))) then
+                in_range = .false.
+                shutdown = .true.
+                interpolation = 0.0_wp
+                exit
+            end if
         end do
         
-        ! Interpolate using the scaled point and the table values
-        do i = 1, N
-            sp = scaled_point(i)
-            j = N - i
-            hypercube(:, :2**j) = (1-sp) * hypercube(:, :2**j) &
-                                    + sp * hypercube(:, 2**j+1:2**(j+1))
-        end do
-        if (mode == 0) then  ! cooling -> fill the first Noutc values, the rest are zeros
-            do i = 1, Noutc
-                interpolation(i) = hypercube(i, 1)
-            end do
-            do i = Noutc+1, Noutc+Nouth-1
-                interpolation(i) = 0.0_wp
-            end do
-        else  ! heating -> first value is still the input power, values 2 through Noutc are zeros
-            interpolation(1) = hypercube(1, 1)
-            do i = 2, Noutc
-                interpolation(i) = 0.0_wp
-            end do
-            do i = Noutc+1, Noutc+Nouth-1
-                interpolation(i) = hypercube(i-Noutc+1, 1)
+        if (in_range) then
+            do i = 1, N
+                if (increasing(i) .and. (point(i) > s(Ni)%ubounds(i, mode)) .or. &
+                (.not. increasing(i)) .and. (point(i) < s(Ni)%lbounds(i, mode))) then
+                    in_range = .false.
+                    exit
+                end if
             end do
         end if
-        deallocate(hypercube)
+        
+        
+        if (.not. shutdown) then
+            ! Map the point to the unit N-hypercube with the table values bounding the point
+            do i = 1, N
+                ! Find the index of the lower bound for the ith component of point
+                j = Findlb(s(Ni)%entries(:, i, mode), point(i), s(Ni)%extents(i, mode))
+                lb_idx(i) = j
+                left = s(Ni)%entries(j, i, mode)
+                right = s(Ni)%entries(j+1, i, mode)
+                ! Compute the scaled point, and keep it between 0 and 1
+                scaled_point(i) = min(1.0_wp, max(0.0_wp, (point(i) - left) / (right - left)))
+            end do
+            allocate(hypercube(Nout, 2**N))
+            counter_bool = .true.  ! All N values of the binary counter are initialized at 1
+            do i = 1, 2**N
+                call Increment(counter_bool)
+                counter_int = merge(ones, zeros, counter_bool)  ! convert logical to int
+                idx = lb_idx + counter_int  ! index of each of the 2**N vertices
+                hypercube(:, i) = Vertex(idx, mode)  ! Get table values associated with the vertices
+                if (any(hypercube(:, i) < 0.0_wp)) then
+                    deallocate(hypercube)
+                    interpolation = 0.0_wp
+                    shutdown = .true.
+                    exit
+                end if
+            end do
+        end if
+        
+        if (.not. shutdown) then
+            ! Interpolate using the scaled point and the table values
+            do i = 1, N
+                sp = scaled_point(i)
+                j = N - i
+                hypercube(:, :2**j) = (1-sp) * hypercube(:, :2**j) &
+                                        + sp * hypercube(:, 2**j+1:2**(j+1))
+            end do
+            if (mode == 0) then  ! cooling -> fill the first Noutc values, the rest are zeros
+                do i = 1, Noutc
+                    interpolation(i) = hypercube(i, 1)
+                end do
+                do i = Noutc+1, Noutc+Nouth-1
+                    interpolation(i) = 0.0_wp
+                end do
+            else  ! heating -> first value is still the input power, values 2 through Noutc are zeros
+                interpolation(1) = hypercube(1, 1)
+                do i = 2, Noutc
+                    interpolation(i) = 0.0_wp
+                end do
+                do i = Noutc+1, Noutc+Nouth-1
+                    interpolation(i) = hypercube(i-Noutc+1, 1)
+                end do
+            end if
+            deallocate(hypercube)
+        end if
     end function Interpolate
 
 
@@ -705,54 +743,15 @@ return
             ! add warning
         end if
     end function Correction
-    
-    
-    function IsIn(value, array, extent)
-    ! Return .true. if the value is within the bounds of the array, .false. otherwise.
-    !
-    ! Inputs
-    !   value (real(wp))
-    !   array (real(wp) array)
-    !   extent (integer) : the extent of the array
-    !
-    ! Output
-    !   isin (logical)
-        real(wp), intent(in) :: array(:)
-        real(wp), intent(in) :: value
-        integer, intent(in) :: extent
-        logical :: isin
-        isin = (array(1) <= value) .and. (value <= array(extent))
-    end function IsIn
-
-    
-    function InPermapDomain(point, mode) result(in_domain)
-    ! Return .true. if the point is located within the performance map domain,
-    ! and .false. otherwise.
-    !
-    ! Inputs
-    !   point (real(wp) array) : point to perform the check with.
-    !   mode (integer) : operating mode to get the adequate performance map entries:
-    !                    cooling (0) or heating(1)
-    !
-    ! Output
-    !   in_domain (logical) : .true. if point is in performance map domain, .false. otherwise.
-        real(wp), intent(in) :: point(N)
-        integer, intent(in) :: mode
-        logical :: in_domain
-        do i = 1, N
-            in_domain = IsIn(point(i), s(Ni)%entries(:, i, mode), s(Ni)%extents(i, mode))
-            if (.not. in_domain) exit
-        end do
-    end function InPermapDomain
 
         
     subroutine ExecuteFirstCallOfSimulation
   	    call SetNumberofParameters(10)
   	    call SetNumberofInputs(16)
   	    call SetNumberofDerivatives(0)
-  	    call SetNumberofOutputs(21)
+  	    call SetNumberofOutputs(22)
   	    call SetIterationMode(1)
-  	    call SetNumberStoredVariables(0, 4)
+  	    call SetNumberStoredVariables(0, 0)
   	    call SetNumberofDiscreteControls(0)
 
         ! Allocate stored data structure
@@ -790,6 +789,7 @@ return
         call SetOutputValue(19, 0.0_wp)  ! Condensate temperature
         call SetOutputValue(20, 0.0_wp)  ! Condensate flow rate
         call SetOutputValue(21, 0.0_wp)  ! Defrost mode
+        call SetOutputValue(22, 0.0_wp)  ! Force shutdown
     end subroutine ExecuteStartTime
 
 
@@ -798,7 +798,15 @@ return
     end subroutine ExecuteEndOfTimestep
 
     subroutine ExecuteLastCallOfSimulation
-        continue
+        deallocate(s(Ni)%extents)
+        deallocate(s(Ni)%entries)
+        deallocate(s(Ni)%lbounds)
+        deallocate(s(Ni)%ubounds)
+        deallocate(s(Ni)%PelcMap)
+        deallocate(s(Ni)%PelhMap)
+        deallocate(s(Ni)%QcsMap)
+        deallocate(s(Ni)%QclMap)
+        deallocate(s(Ni)%QhMap)
     end subroutine ExecuteLastCallOfSimulation
 
 
@@ -858,6 +866,7 @@ return
         call SetOutputValue(19, Tc)  ! Condensate temperature
         call SetOutputValue(20, cmfr)  ! Condensate flow rate
         call SetOutputValue(21, real(defrost_mode, wp))  ! Defrost mode
+        call SetOutputValue(22, merge(1.0_wp, 0.0_wp, shutdown))  ! Force shutdown
     end subroutine SetOutputValues
 
 end subroutine Type3254

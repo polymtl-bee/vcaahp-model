@@ -255,8 +255,10 @@ if (modulate) then
     else
         fq = 0.0_wp
     end if
-else if ((ti > 0.0_wp) .and. (onOff > 0)) then  ! even though there is no frequency modulation, the integral must be updated
-    fi = fi_old + Kc / ti * dt * (e + e_old) / 2
+else
+    fi = 0.0_wp
+!else if ((ti > 0.0_wp) .and. (onOff > 0)) then  ! even though there is no frequency modulation, the integral must be updated
+    !fi = fi_old + Kc / ti * dt * (e + e_old) / 2
 end if
 call StorePIvalues()
 
