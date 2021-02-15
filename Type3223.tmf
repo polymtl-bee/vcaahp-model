@@ -43,8 +43,23 @@ __
 __
 __
 __
-23
-Setpoint
+25
+On/Off signal
+SN
+1
+ON / OFF signal for the controller. Zero is interpreted as OFF, and all nonzero values are interpeted as ON.
+simple
+real
+1
++
+-Inf
++Inf
+[ ; ]
+1
+0
+-
+Dimensionless
+Temperature setpoint
 SN
 1
 Command signal that sets the target temperature.
@@ -59,7 +74,26 @@ real
 0
 C
 Temperature
-Command signal
+Fan speed setting
+SN
+5
+Setting for the indoor unit fan speed:
+1 = low
+2 = medium
+3 = high
+When this input is set to 0, the controller determines the appropriate setting automatically.
+simple
+integer
+1
++
+0
++Inf
+[ ; ]
+0
+0
+-
+Dimensionless
+Return temperature
 SN
 1
 Temperature to be controlled (typically the indoor temperature).
@@ -89,21 +123,6 @@ real
 0
 C
 Temperature
-On/Off signal
-SN
-1
-ON / OFF signal for the controller. Zero is interpreted as OFF, and all nonzero values are interpeted as ON.
-simple
-real
-1
-+
--Inf
-+Inf
-[ ; ]
-1
-0
--
-Dimensionless
 Minimum control signal
 SN
 1
@@ -131,6 +150,53 @@ real
 +Inf
 [ ; ]
 1
+0
+-
+Dimensionless
+Operating mode
+SN
+3
+-1 = automatic heating / cooling mode
+0 = alway in cooling mode
+1 = always in heating mode
+simple
+integer
+1
++
+-1
+1
+[ ; ]
+-1
+0
+-
+Dimensionless
+Defrost mode override
+SN
+1
+
+simple
+integer
+1
++
+-1
+2
+[ ; ]
+-1
+0
+-
+dimensionless
+Number of frequency levels
+SN
+1
+The number of values N that the command signal can take between its minimum and maximum values (inputs 4 and 5, respectively). The command signal levels are evenly spaced, i.e. the i-th value is equal to i * (max - min) / N.
+simple
+integer
+1
++
+1
++Inf
+[ ; ]
+10
 0
 -
 Dimensionless
@@ -164,40 +230,7 @@ real
 0
 hr
 Time
-Tracking time
-SN
-3
-Tracking time constant for the anti-windup in the PI controller. This is used to decrease the integral action whenever the control variable (i.e. the frequency) is saturated.
-Low values of tracking time will result in a higher anti-windup effect, except for 0 which disables the anti-windup.
-Providing a negative tracking time will set it to the same value as the integral time.
-simple
-real
-1
-+
--Inf
-+Inf
-[ ; ]
--1
-0
-hr
-Time
-Proportional setpoint weight
-SN
-2
-Fraction of the setpoint value used in the proportional effect (must be between 0 and 1).
-A low setpoint weight decreases the overshoot following at setpoint change, but will also cause a more sluggish response.
-simple
-real
-1
-+
-0
-1
-[ ; ]
-1
-0
--
-Dimensionless
-Normalized frequency
+Frequency control signal
 SN
 1
 This is the control signal that has to be given as input to the Type3254.
@@ -212,55 +245,7 @@ real
 0
 -
 Dimensionless
-Number of frequency levels
-SN
-1
-The number of values N that the command signal can take between its minimum and maximum values (inputs 4 and 5, respectively). The command signal levels are evenly spaced, i.e. the i-th value is equal to i * (max - min) / N.
-simple
-integer
-1
-+
-1
-+Inf
-[ ; ]
-10
-0
--
-Dimensionless
-Normalized air flow rate
-SN
-2
-Imposes the heat pump normalized air flow rate to a fixed value.
-If negative, the air flow rate is selected automatically from the control file values.
-simple
-real
-1
-+
-0.0
-+Inf
-[ ; ]
--1
-0
--
-Dimensionless
-Operating mode
-SN
-3
--1 = automatic heating / cooling mode
-0 = alway in cooling mode
-1 = always in heating mode
-simple
-integer
-1
-+
--1
-1
-[ ; ]
--1
-0
--
-Dimensionless
-Normalized air flow rate
+Fan speed ratio
 SN
 1
 
@@ -322,6 +307,36 @@ real
 0
 min
 Time
+Monotonous frequency minimum duration
+SN
+1
+To ensure that the frequency does not oscillates too much, it is forced to be monotonous (or constant) for a duration specified by this parameter. Set the duration to zero to disable this behaviour.
+simple
+real
+3
++
+0.0
++Inf
+[ ; ]
+5.0
+0
+min
+Time
+Maximum number of iterations
+SN
+1
+Number of iterations after which the controller's output will stick to its current value in order to avoid oscillations and promote convergence.
+simple
+integer
+3
++
+0
++Inf
+[ ; ]
+5
+0
+-
+Dimensionless
 Logical Unit - cooling mode
 SN
 1
@@ -382,21 +397,39 @@ real
 0
 -
 dimensionless
-Defrost mode
+Tracking time
 SN
-1
-
+3
+Tracking time constant for the anti-windup in the PI controller. This is used to decrease the integral action whenever the control variable (i.e. the frequency) is saturated.
+Low values of tracking time will result in a higher anti-windup effect, except for 0 which disables the anti-windup.
+Providing a negative tracking time will set it to the same value as the integral time.
 simple
-integer
+real
 1
 +
--1
-2
+-Inf
++Inf
 [ ; ]
 -1
 0
+hr
+Time
+Proportional setpoint weight
+SN
+2
+Fraction of the setpoint value used in the proportional effect (must be between 0 and 1).
+A low setpoint weight decreases the overshoot following at setpoint change, but will also cause a more sluggish response.
+simple
+real
+1
++
+0
+1
+[ ; ]
+1
+0
 -
-dimensionless
+Dimensionless
 0
 0
 0
@@ -526,7 +559,7 @@ Logical Unit - heating mode
 1
 100
 0
-3
+5
 0
 
 

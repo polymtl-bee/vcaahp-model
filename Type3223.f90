@@ -9,35 +9,36 @@
 ! --------------------------------------------------------------------------------------------------
 !  # | Variable     | Description                                   | Input Units   | Internal Units
 ! --------------------------------------------------------------------------------------------------
-!  1 | Tset         | Setpoint temperature (command signal)         | °C            | °C
-!  2 | Tr           | Controlled variable                           | °C            | °C
-!  3 | Toa          | Outdoor air temperature                       | °C            | °C
-!  4 | onOff        | ON/OFF signal                                 | -             | -
-!  5 | fmin         | Minimum value for the output frequency        | -             | -
-!  6 | fmax         | Maximum value for the output frequency        | -             | -
-!  7 | Kc           | Gain constant                                 | any           | any
-!  8 | ti           | Integral time constant                        | h             | h
-!  9 | tt           | Tracking time constant                        | h             | h
-! 10 | b            | Proportional setpoint weight                  | -             | -
-! 11 | N            | Number of frequency levels                    | -             | -
-! 12 | AFR          | Normalized air flow rate                      | -             | -
-! 13 | mode         | 0 = cooling mode                              | -             | -
+!  1 | onOff        | ON/OFF signal                                 | -             | -
+!  2 | Tset         | Setpoint temperature                          | °C            | °C
+!  3 | AFRlevel     | Level of the unit air flow rate / fan speed   | -             | -
+!  4 | Tr           | Return temperature (controlled variable)      | °C            | °C
+!  5 | Toa          | Outdoor air temperature                       | °C            | °C
+!  6 | fmin         | Minimum value for the output frequency        | -             | -
+!  7 | fmax         | Maximum value for the output frequency        | -             | -
+!  8 | mode         | 0 = cooling mode                              | -             | -
 !                   | 1 = heating mode                              |               |
-! 14 | defrost_mode |-1 = defrost cycles (normal behaviour)         | -             | -
+!  9 | defrost_mode |-1 = defrost cycles (normal behaviour)         | -             | -
 !                   | 0 = defrost (off) mode                        |               |
 !                   | 1 = recovery mode (transient)                 |               |
 !                   | 2 = steady-state mode                         |               |
+! 10 | N            | Number of frequency levels                    | -             | -
+! 11 | Kc           | Gain constant                                 | -             | -
+! 12 | ti           | Integral time constant                        | h             | h
+! 13 | tt           | Tracking time constant                        | h             | h
+! 14 | b            | Proportional setpoint weight                  | -             | -
 ! --------------------------------------------------------------------------------------------------
 
 ! Parameters
 ! --------------------------------------------------------------------------------------------------
-! # | Variable     | Description                                   | Param. Units  | Internal Units
+! # | Variable      | Description                                   | Param. Units  | Internal Units
 ! --------------------------------------------------------------------------------------------------
-! 1 | mode_deadband| Operating mode deadband for automatic mode    | °C            | °C
-! 2 | t_fm_min     | Minimum fixed operating mode duration         | h             | h
-! 3 | nIterMax     | Maximum number of iterations                  | -             | -
-! 4 | LUcool       | Logical Unit - cooling mode                   | -             | -
-! 5 | LUheat       | Logical Unit - heating mode                   | -             | -
+! 1 | mode_deadband | Operating mode deadband for automatic mode    | °C            | °C
+! 2 | t_fm_min      | Minimum fixed operating mode duration         | min           | h
+! 3 | t_mnt_min     | Minimum forced monotonous frequency duration  | min           | h
+! 4 | nIterMax      | Maximum number of iterations                  | -             | -
+! 5 | LUcool        | Logical Unit - cooling mode                   | -             | -
+! 6 | LUheat        | Logical Unit - heating mode                   | -             | -
 ! --------------------------------------------------------------------------------------------------
 
 ! Outputs
@@ -45,7 +46,7 @@
 !  # | Variable     | Description                                   | Output  Units | Internal Units
 ! --------------------------------------------------------------------------------------------------
 !  1 | fq           | Normalized frequency (control signal)         | -             | -
-!  2 | AFR          | Normalized air flow rate                      | -             | -
+!  2 | AFR          | Normalized air flow rate / fan speed ratio    | -             | -
 !  3 | mode         | 0 = cooling mode                              | -             | -
 !                   | 1 = heating mode                              |               |
 !  4 | defrost_mode | 0 = defrost (off) mode                        |               |
@@ -182,8 +183,12 @@ call SetDynamicArrayValueThisIteration(15, t_fm)  ! store fixed operationg mode 
 ! Get air flow rate
 old_AFRlevel = int(GetDynamicArrayValueLastTimestep(5))
 ! Get the air flow rate level from the setpoint error and hysteresis loops
-AFRlevel = GetLevel(s(Ni)%AFRerror(:, mode), s(Ni)%AFRdb(:, mode), e, old_AFRlevel, mode)
-if (AFR < 0) AFR = s(Ni)%AFR(AFRlevel, mode)
+if (AFRlevel == 0) then
+    AFRlevel = GetLevel(s(Ni)%AFRerror(:, mode), s(Ni)%AFRdb(:, mode), e, old_AFRlevel, mode)
+else if (mode == 0) then
+    AFRlevel = s(Ni)%nAFR(0) + 1 - AFRlevel
+end if
+AFR = s(Ni)%AFR(AFRlevel, mode)
 call SetDynamicArrayValueThisIteration(5, real(AFRlevel, wp))
 
 ! Get frequency limits
@@ -262,8 +267,6 @@ else
 end if
 call StorePIvalues()
 
-
-t_mnt_min = 5.0_wp / 60.0_wp  ! minimum monotonous operation time
 t_mnt = GetDynamicArrayValueLastTimestep(12)
 dfdt_sign_prev = int(GetDynamicArrayValueLastTimestep(14))
 if (fq > fq_prev) then  ! frequency is increasing
@@ -633,7 +636,7 @@ return
 
 
     subroutine ExecuteFirstCallOfSimulation
-        call SetNumberofParameters(5)
+        call SetNumberofParameters(6)
 	    call SetNumberofInputs(14)
 	    call SetNumberofDerivatives(0)
 	    call SetNumberofOutputs(5)
@@ -692,26 +695,27 @@ return
     subroutine ReadParameters
         mode_deadband = GetParameterValue(1)
         t_fm_min = GetParameterValue(2) / 60.0_wp
-        nIterMax = GetParameterValue(3)
-        LUcool = GetParameterValue(4)
-        LUheat = GetParameterValue(5)
+        t_mnt_min = GetParameterValue(3) / 60.0_wp
+        nIterMax = GetParameterValue(4)
+        LUcool = GetParameterValue(5)
+        LUheat = GetParameterValue(6)
     end subroutine ReadParameters
 
     subroutine GetInputValues
-        Tset = GetInputValue(1)
-        Tr = nint(GetInputValue(2)*100.0_wp)/100.0_wp ! round to 0.2 °C to avoid oscillations
-        Toa = GetInputValue(3)
-        onOff = GetInputValue(4)
-        fmin = GetInputValue(5)
-        fmax = GetInputValue(6)
-        Kc = GetInputValue(7)
-        ti = GetInputValue(8)
-        tt = GetInputValue(9)
-        b = GetInputValue(10)
-        N = GetInputValue(11)
-        AFR = GetInputValue(12)
-        mode = GetInputValue(13)
-        defrost_mode = GetInputValue(14)
+        onOff = GetInputValue(1)
+        Tset = GetInputValue(2)
+        AFR = GetInputValue(3)
+        Tr = nint(GetInputValue(4)*100.0_wp)/100.0_wp ! round to 0.2 °C to avoid oscillations
+        Toa = GetInputValue(5)
+        fmin = GetInputValue(6)
+        fmax = GetInputValue(7)
+        mode = GetInputValue(8)
+        defrost_mode = GetInputValue(9)
+        N = GetInputValue(10)
+        Kc = GetInputValue(11)
+        ti = GetInputValue(12)
+        tt = GetInputValue(13)
+        b = GetInputValue(14)
     end subroutine GetInputValues
 
 

@@ -18,7 +18,7 @@
 !  7 | woa          | Outdoor air humidity ratio                    | -             | -
 !  8 | RHoa         | Outdoor air realtive humidity                 | % (base 100)  | -
 !  9 | poa          | Outdoor air pressure                          | atm           | atm
-! 10 | freq         | Normalized compressor frequency               | -             | -
+! 10 | freq         | Normalized frequency signal                   | -             | -
 ! 11 | AFR          | Inlet (return) normalized air flow rate       | -             | -
 ! 12 | mode         | 0 = cooling mode                              | -             | -
 !                   | 1 = heating mode                              |               |
