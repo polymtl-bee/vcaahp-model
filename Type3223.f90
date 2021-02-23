@@ -76,7 +76,6 @@ type Type3223DataStruct
     ! Defrost parameters
     real(wp) :: Tcutoff, t_df, t_h(4), t_rec(2), Tmin
 
-
 end type Type3223DataStruct
 
 type(Type3223DataStruct), allocatable, save :: s(:)
@@ -118,7 +117,7 @@ real(wp) :: t_ld, t_uc, t_oc, Toa_av, Toa_av_prev, t_rec, recov_penalty
 
 
 ! Set the version number for this Type
-if (GetIsVersionSigningTime()) then
+if ( GetIsVersionSigningTime() ) then
     call SetTypeVersion(18)
     return
 endif
@@ -129,27 +128,27 @@ thisUnit = GetCurrentUnit()
 thisType = GetCurrentType()
 
 ! All the stuff that must be done once at the beginning
-if(GetIsFirstCallofSimulation()) then
+if ( GetIsFirstCallofSimulation() ) then
     call ExecuteFirstCallOfSimulation()
     return
 endif
 
 ! Parameters must be re-read - indicates another unit of this Type
-if(GetIsReReadParameters()) call ReadParameters()
+if ( GetIsReReadParameters() ) call ReadParameters()
 
 ! Start of the first timestep: no iterations, outputs initial conditions
-if (GetIsStartTime()) then
+if ( GetIsStartTime() ) then
     call ExecuteStartTime()
     return
 endif
 
 ! End of timestep call (after convergence or too many iterations)
-if (GetIsEndOfTimestep()) then
+if ( GetIsEndOfTimestep() ) then
     call ExecuteEndOfTimestep()
     return
 endif
 
-if (GetIsLastCallofSimulation()) then
+if ( GetIsLastCallofSimulation() ) then
     call ExecuteLastCallOfSimulation()
     return
 endif
@@ -166,9 +165,9 @@ if (mode == -1) then  ! automatic setting of the operating mode
         t_fm = t_fm + dt  ! increment the timer
     else
         ! Use a deadband to avoid oscillations. Inside the deadband, the previous mode is kept.
-        if (e < -mode_deadband / 2.0_wp) then
+        if ( e < -mode_deadband / 2.0_wp ) then
             mode = 0
-        else if (e > mode_deadband / 2.0_wp) then
+        else if ( e > mode_deadband / 2.0_wp ) then
             mode = 1
         else
             mode = int(GetOutputValue(3))  ! take mode at last iteration, instead of last timestep
@@ -205,8 +204,8 @@ if (fmax < 0.0_wp) then
         zone = GetLevel(s(Ni)%Toa2, s(Ni)%db2, Toa, old_zone, 1)  ! determine the temperature zone (fig. 3.5)
         call SetDynamicArrayValueThisIteration(6, real(zone, wp))
         AFR2level = FindLevel(s(Ni)%AFR2, AFR, s(Ni)%nAFR2)  ! find level corresponding to the AFR value
-        if (AFR2level > s(Ni)%nAFR2) AFR2level = s(Ni)%nAFR2
-        if (t_boost < s(Ni)%t_boost_max) then  ! use the boost frequency only for a limited time period
+        if ( AFR2level > s(Ni)%nAFR2 ) AFR2level = s(Ni)%nAFR2
+        if ( t_boost < s(Ni)%t_boost_max ) then  ! use the boost frequency only for a limited time period
             fmax = s(Ni)%f2(zone, AFR2level)
         else  ! If the maximum time is exceeded, use the steady-state maximum frequency (scaled down version of f2)
             fmax = s(Ni)%f2(zone, AFR2level) * s(Ni)%f1f2
@@ -222,9 +221,9 @@ modulate = .false.
 if (onOff <= 0) then
     fi = 0.0_wp
     fq = 0.0_wp
-else if (e < s(Ni)%e_min(mode)) then  ! e < e_min
+else if ( e < s(Ni)%e_min(mode) ) then  ! e < e_min
     fq = (1 - real(mode, wp)) * fmax  ! 0 in heating, fmax in cooling
-else if (e > s(Ni)%e_max(mode)) then  ! e > e_max
+else if ( e > s(Ni)%e_max(mode) ) then  ! e > e_max
     fq = real(mode, wp) * fmax  ! fmax in heating, 0 in cooling
 else
     modulate = .true.
@@ -247,14 +246,14 @@ if (modulate) then
         fi = fi_old
     endif
     f = fp + fi  ! Unsaturated signal
-    if (tt > 0.0_wp .and. (f < fmin .or. f > fmax)) then
+    if ( tt > 0.0_wp .and. (f < fmin .or. f > fmax) ) then
         es = f - min(fmax, max(fmin, f))  ! Error with saturated signal
         fi = fi - dt * (es + es_old) / 2 / tt  ! De-saturate integral signal
         f = fp + fi  ! Re-calculate the unsaturated signal
     endif
-    if (GetTimestepIteration() > nIterMax) then
+    if ( GetTimestepIteration() > nIterMax ) then
         fq = fq_prev
-    else if (f > fmin / 2.0_wp) then
+    else if ( f > fmin / 2.0_wp ) then
         fsat = min(fmax, max(fmin, f))  ! Saturated signal
         fq = (1.0_wp * floor(N * fsat)) / (1.0_wp * N)  ! Quantized signal
     else
@@ -277,7 +276,7 @@ else
     dfdt_sign = dfdt_sign_prev
 end if
 
-if (dfdt_sign*dfdt_sign_prev == -1) then  ! previous timestep was a local extremum
+if ( dfdt_sign * dfdt_sign_prev == -1 ) then  ! previous timestep was a local extremum
     if (t_mnt <= t_mnt_min) then
         fq = fq_prev  ! keep the previous frequency value
         t_mnt = t_mnt + dt  ! increment monotonous frequency timer
@@ -292,14 +291,14 @@ call SetDynamicArrayValueThisIteration(12, t_mnt)
 call SetDynamicArrayValueThisIteration(13, fq)
 call SetDynamicArrayValueThisIteration(14, real(dfdt_sign, wp))
 
-if (abs(fq - fmax) < 0.001_wp .and. fmaxBoost) then  ! Heat pump operates at boost frequency
+if ( abs(fq - fmax) < 0.001_wp .and. fmaxBoost ) then  ! Heat pump operates at boost frequency
     t_boost = t_boost + dt  ! increment the boost frequency timer
 else
     t_boost = 0.0_wp  ! reset the timer
 endif
 call SetDynamicArrayValueThisIteration(7, real(t_boost, wp))
 
-if (defrost_mode == -1 .and. mode == 1) call SetDefrostMode(defrost_mode)  ! automatic defrost selection
+if ( defrost_mode == -1 .and. mode == 1 ) call SetDefrostMode(defrost_mode)  ! automatic defrost selection
 if (mode == 1) recov_penalty = RecoveryPenalty(t_ld, t_rec)  ! if () because risk of division by zero
 
 call SetOutputValues()
@@ -459,7 +458,7 @@ return
         if (level == 1) then
             valueInLowDb = .false.
             valueInHighDb = value > centers(1) + hdb(1)
-        else if (level == size(centers) + 1) then
+        else if ( level == size(centers) + 1 ) then
             valueInLowDb = value < centers(size(centers)) + hdb(size(hdb))
             valueInHighDb = .false.
         else
@@ -472,11 +471,11 @@ return
         
         ! If the value is within a deadband, adjust the level based on the old level.
         if (valueInLowDb) then
-            if (old_level < level .and. hyst_dir == 1) level = level - 1
-            if (old_level > level .and. hyst_dir == 0) level = level + 1
+            if ( old_level < level .and. hyst_dir == 1 ) level = level - 1
+            if ( old_level > level .and. hyst_dir == 0 ) level = level + 1
         else if (valueInHighDb) then
-            if (old_level > level .and. hyst_dir == 1) level = level + 1
-            if (old_level < level .and. hyst_dir == 0) level = level - 1
+            if ( old_level > level .and. hyst_dir == 1 ) level = level + 1
+            if ( old_level < level .and. hyst_dir == 0 ) level = level - 1
         end if
     end function GetLevel
 
@@ -499,7 +498,7 @@ return
         integer, intent(in) :: extent
         integer :: level
         integer :: L, R, mid
-        if (value > array(extent)) then
+        if ( value > array(extent) ) then
             level = extent + 1
         else
             L = 1
@@ -645,7 +644,7 @@ return
 	    call SetNumberofDiscreteControls(0)
 
         ! Allocate stored data structure
-        if (.not. allocated(s)) then
+        if ( .not. allocated(s) ) then
             allocate(s(Ninstances))
         endif
 

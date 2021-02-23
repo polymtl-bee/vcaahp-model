@@ -130,12 +130,13 @@ real(wp) :: fComp, COP, EER, Tc, cmfr, recov_penalty  ! Outputs (misc)
 
 
 ! Local variables
-real(wp) :: psydat(9), Twbr, Twboa, hr, hx, hs, dr
-integer :: status
+real(wp) :: psydat(9), Twbr, Twboa, hr, hx, hs, dr, shutdown_fraction, extrapolation_fraction
+integer :: status, shutdowns, extrapolations, shutdown_alt
 integer, parameter :: Ninstances = 1  ! Number of units (should be provided by a function)
 integer :: Ni = 1  ! temporary, should use a kernel function to get the actual instance number.
 real(wp) :: defrost_corr(2) = 0.0_wp  ! defrost correction factors
-logical :: shutdown
+logical :: shutdown, previous_shutdown, defrost_cooling
+Character (len=maxMessageLength) aString, bString
 
 ! Performance map reading variables
 integer, parameter :: Nc = 5, Nh = 4  ! Number of interpolation variables
@@ -144,10 +145,10 @@ integer :: i, j, N, Noutc = 3, Nouth = 2, Nout
 
 
 ! Interpolation variables
-real(wp), allocatable :: interpolationResults(:), point(:)
+real(wp), allocatable :: interpolation_results(:), point(:)
 
 ! Set the version number for this Type
-if (GetIsVersionSigningTime()) then
+if ( GetIsVersionSigningTime() ) then
     call SetTypeVersion(18)
     return
 endif
@@ -158,27 +159,27 @@ thisUnit = GetCurrentUnit()
 thisType = GetCurrentType()
 
 ! All the stuff that must be done once at the beginning
-if(GetIsFirstCallofSimulation()) then
+if ( GetIsFirstCallofSimulation() ) then
     call ExecuteFirstCallOfSimulation()
     return
 endif
 
 ! Parameters must be re-read - indicates another unit of this Type
-if(GetIsReReadParameters()) call ReadParameters()
+if ( GetIsReReadParameters() ) call ReadParameters()
 
 ! Start of the first timestep: no iterations, outputs initial conditions
-if (GetIsStartTime()) then
+if ( GetIsStartTime() ) then
     call ExecuteStartTime()
 	return
 endif
 
 ! End of timestep call (after convergence or too many iterations)
-if (GetIsEndOfTimestep()) then
+if ( GetIsEndOfTimestep() ) then
     call ExecuteEndOfTimestep()
     return
 endif
 
-if (GetIsLastCallofSimulation()) then
+if ( GetIsLastCallofSimulation() ) then
     call ExecuteLastCallOfSimulation()
     return
 endif
@@ -190,15 +191,22 @@ shutdown = .false.
 if (ErrorFound()) return
 
 ! Ni = GetCurrentUnit()
-N = (1-mode) * Nc + mode * Nh  ! number of interpolation variables, depending on the operating mode.
-Nout = (1-mode) * Noutc + mode * Nouth  ! number of ouput values for the interpolation
+
+defrost_cooling = (mode == 1) .and. (defrost_mode == 0)
+if ( mode == 0 .or. defrost_cooling ) then
+    N = Nc  ! Number of interpolation variables, depending on the operating mode.
+    Nout = Noutc  ! Number of output values for the interpolation.
+else
+    N = Nh
+    Nout = Nouth
+end if
 
 ! Determine return air state
 psydat(1) = pr
 psydat(2) = Tr
 psydat(4) = RHr/100.0_wp
 psydat(6) = wr
-if (mode==0) then
+if ( mode==0 .or. defrost_cooling ) then
     call MoistAirProperties(thisUnit, thisType, 1, psymode, 1, psydat, 1, status)
     ! (unit, type, si units used, psych inputs, Twb computed, inputs, warning mgmt, warning occurences)
 else
@@ -217,21 +225,21 @@ else
     AFR = mDot / (dr * AFRrated)
 endif
 
-if (mode == 1) then ! compute outdoor air wet bulb for the interpolation
-    psydat(1) = poa
-    psydat(2) = Toa
-    psydat(4) = RHoa/100.0_wp
-    psydat(6) = woa
-    call MoistAirProperties(thisUnit, thisType, 1, psymode, 1, psydat, 1, status)
-    Twboa = psydat(3)
-    defrost_corr = Correction(defrost_mode, recov_penalty)
-end if
+!if (mode == 1) then ! compute outdoor air wet bulb for the interpolation
+!    psydat(1) = poa
+!    psydat(2) = Toa
+!    psydat(4) = RHoa/100.0_wp
+!    psydat(6) = woa
+!    call MoistAirProperties(thisUnit, thisType, 1, psymode, 1, psydat, 1, status)
+!    Twboa = psydat(3)
+!    defrost_corr = Correction(defrost_mode, recov_penalty)
+!end if
 
 if (freq > 0) then
     ! Interpolate using wet bulb in cooling
     allocate(point(N))
     point(1) = Tr
-    if (mode == 0) then
+    if ( mode == 0 .or. defrost_cooling ) then
         point(2) = Twbr
         point(3) = Toa
         point(4) = AFR
@@ -240,24 +248,42 @@ if (freq > 0) then
         point(2) = Toa
         point(3) = AFR
         point(4) = freq
+        defrost_corr = Correction(defrost_mode, recov_penalty)
     end if
-    allocate(interpolationResults(Nout))
-    interpolationResults = Interpolate(point, mode, Nout)
+    allocate(interpolation_results(Nout))
+    if (defrost_cooling) then
+        interpolation_results = Interpolate(point, 0, Nout)
+        continue
+    else
+        interpolation_results = Interpolate(point, mode, Nout)
+    end if
     deallocate(point)
-    if (mode == 0) Pel = interpolationResults(1) * PelcRated
-    if (mode == 1) Pel = interpolationResults(1) * PelhRated * defrost_corr(1)
-    Qcs = interpolationResults(2) * QcRated
-    Qcl = interpolationResults(3) * QcRated
-    Qh = interpolationResults(4) * QhRated * defrost_corr(2)
-    Qc = Qcs + Qcl
-    deallocate(interpolationResults)
+    previous_shutdown = GetOutputValue(22) == 1.0_wp
+    if ( previous_shutdown .neqv. shutdown ) shutdown_alt = GetOutputValue(23) + 1
+    if (shutdown_alt > 4) then
+        shutdown = previous_shutdown
+        if (shutdown) call ForceZeroPerformance()
+    else
+        if ( mode == 0 .or. defrost_cooling ) then
+            Pel = interpolation_results(1) * PelcRated
+        else
+            Pel = interpolation_results(1) * PelhRated * defrost_corr(1)
+        end if
+        Qcs = interpolation_results(2) * QcRated
+        Qcl = interpolation_results(3) * QcRated
+        Qh = interpolation_results(4) * QhRated * defrost_corr(2)
+        Qc = Qcs + Qcl
+    end if
+    deallocate(interpolation_results)
 else
-    Qcs = 0.0_wp
-    Qcl = 0.0_wp
-    Qh = 0.0_wp
-    Qc = 0.0_wp
-    Pel = 0.0_wp
+    call ForceZeroPerformance()
 endif
+
+
+if (shutdown) then
+    call SetDynamicArrayValueThisIteration(1, GetDynamicArrayValueLastTimestep(1) + 1.0_wp)
+    fcomp = 0.0_wp  ! force shutdown -> set output frequency to zero
+end if
 
 
 ! Determine supply air state
@@ -304,7 +330,7 @@ ws = psydat(6)
 hs = psydat(7)
 
 ! Re-calculate heat transfer whose value is modified if saturation occurs
-if (mode == 0 .and. freq > 0.0_wp) then
+if ( mode == 0 .and. freq > 0.0_wp ) then
     Qcs = mDot * (hx - hs)  ! Sensible cooling rate
     Qcl = mDot * (hr - hx)  ! Latent cooling rate
     Qc = Qcs + Qcl  ! Total cooling rate
@@ -325,8 +351,6 @@ endif
 EER = 3.413_wp * COP
 Tc = Ts
 cmfr = mDot * (wr - ws)  ! Condensate flow rate - water balance
-
-if (shutdown) fcomp = 0.0_wp  ! force shutdown -> set output frequency to zero
 
 call SetOutputValues()
 
@@ -421,7 +445,7 @@ return
         character (len=maxMessageLength) :: msg
         inquire(file=trim(permapPath), exist=permapFileFound)
         if ( .not. permapFileFound ) then
-            write(msg,'("""",a,"""")') trim(permapPath)
+            write(msg, '("""",a,"""")') trim(permapPath)
             msg = "Could not find the specified performance map file. Searched for: " // trim(msg)
             call Messages(-1, msg, 'fatal', thisUnit, thisType)
             return
@@ -441,8 +465,8 @@ return
     
     
     function RowToColMajorOrder(rowIndex, extents) result(colIndex)
-    ! RowToColMajorOrder transforms a row-major order index
-    ! corresponding to a given array shape into a column-major index.
+    ! Transform a row-major order index corresponding to a given array shape
+    ! into a column-major index.
     !
     ! Inputs
     !   rowIndex (integer) : one-based index of an array in row-major order.
@@ -466,7 +490,7 @@ return
 
 
     function Interpolate(point, mode, Nout) result(interpolation)
-    ! Interpolate performs a piecewise multilinear interpolation on the tables in
+    ! Perform a piecewise multilinear interpolation on the tables in
     ! the structure Type3254DataStruct.
     !
     ! Inputs
@@ -481,13 +505,11 @@ return
         real(wp) :: scaled_point(N), left, right, sp
         real(wp), allocatable :: hypercube(:, :)
         integer, intent(in) :: mode
-        integer, dimension(N) :: idx, lb_idx, counter_int, ones, zeros
-        integer :: i
+        integer, dimension(N) :: idx, lb_idx, counter_int
+        integer :: i, flag
         logical :: counter_bool(N), increasing(N), in_range
         integer, intent(in) :: Nout
         real(wp) :: interpolation(Noutc + Nouth - 1)
-        zeros = 0
-        ones = 1
         
         ! Check if point is within the operating range before interpolation
         if (mode == 0) increasing = (/.true., .false., .false., .true., .true./)
@@ -495,8 +517,8 @@ return
         in_range = .true.
         shutdown = .false.
         do i = 1, N
-            if (increasing(i) .and. (point(i) < s(Ni)%lbounds(i, mode)) .or. &
-            (.not. increasing(i)) .and. (point(i) > s(Ni)%ubounds(i, mode))) then
+            if ( increasing(i) .and. (point(i) < s(Ni)%lbounds(i, mode)) .or. &
+            (.not. increasing(i)) .and. (point(i) > s(Ni)%ubounds(i, mode)) ) then
                 in_range = .false.
                 shutdown = .true.
                 interpolation = 0.0_wp
@@ -504,10 +526,13 @@ return
             end if
         end do
         
+        ! Allow to go below the lower outdoor temperature limit during defrost operation
+        if ( shutdown .and. defrost_cooling .and. (i == 3) .and. (point(3) >= s(Ni)%lbounds(2, 1)) ) shutdown = .false.
+        
         if (in_range) then
             do i = 1, N
-                if (increasing(i) .and. (point(i) > s(Ni)%ubounds(i, mode)) .or. &
-                (.not. increasing(i)) .and. (point(i) < s(Ni)%lbounds(i, mode))) then
+                if ( increasing(i) .and. (point(i) > s(Ni)%ubounds(i, mode)) .or. &
+                (.not. increasing(i)) .and. (point(i) < s(Ni)%lbounds(i, mode)) ) then
                     in_range = .false.
                     exit
                 end if
@@ -515,7 +540,7 @@ return
         end if
         
         
-        if (.not. shutdown) then
+        if ( .not. shutdown ) then
             ! Map the point to the unit N-hypercube with the table values bounding the point
             do i = 1, N
                 ! Find the index of the lower bound for the ith component of point
@@ -530,10 +555,10 @@ return
             counter_bool = .true.  ! All N values of the binary counter are initialized at 1
             do i = 1, 2**N
                 call Increment(counter_bool)
-                counter_int = merge(ones, zeros, counter_bool)  ! convert logical to int
+                counter_int = merge(1, 0, counter_bool)  ! convert logical to int
                 idx = lb_idx + counter_int  ! index of each of the 2**N vertices
                 hypercube(:, i) = Vertex(idx, mode)  ! Get table values associated with the vertices
-                if (any(hypercube(:, i) < 0.0_wp)) then
+                if ( any(abs(hypercube(:, i) + 1e12) < 1e-12) ) then  ! Check for "force sutdown" flags
                     deallocate(hypercube)
                     interpolation = 0.0_wp
                     shutdown = .true.
@@ -542,7 +567,16 @@ return
             end do
         end if
         
-        if (.not. shutdown) then
+        if ( .not. shutdown ) then
+            do i = 1, 2**N
+                do j = 1, Nout
+                    if ( hypercube(j, i) < 0.0_wp ) then
+                        hypercube(j, i) = - hypercube(j, i)
+                        in_range = .false.
+                    end if
+                end do
+            end do
+                    
             ! Interpolate using the scaled point and the table values
             do i = 1, N
                 sp = scaled_point(i)
@@ -567,12 +601,13 @@ return
                 end do
             end if
             deallocate(hypercube)
+            if (in_range) call SetDynamicArrayValueThisIteration(2, GetDynamicArrayValueLastTimestep(2) + 1.0_wp)
         end if
     end function Interpolate
 
 
     function Vertex(idx, mode)
-    ! Vertex provides the performance map values associated with a certain index,
+    ! Provide the performance map values associated with a certain index,
     ! taking the operating mode into account.
     !
     ! Inputs
@@ -599,7 +634,7 @@ return
 
 
     function GetPMvalue(mode, array, idx) result(value)
-    ! GetPMvalue retrieves the value at a given index in a performance map.
+    ! Retrieve the value at a given index in a performance map.
     !
     ! Inputs
     !   mode (integer, 0 or 1) : mode (heating or cooling) associated with the performance map.
@@ -622,7 +657,7 @@ return
 
 
     subroutine SetPMvalue(array, idx, value, PMlength)
-    ! SetPMvalue sets a value in a performance map at a given index.
+    ! Set a value in a performance map at a given index.
     !
     ! Inputs
     !   array : performance map, contained in the structure Type3254DataStruct.
@@ -637,7 +672,7 @@ return
 
 
     function Findlb(array, value, extent) result(lowerBoundIndex)
-    ! findlb finds the index of the element of an ordered array which is smaller
+    ! Find the index of the element of an ordered array which is smaller
     ! and closest to a given value.
     ! Special cases: If the value is exactly equal to an element of the array
     ! with index i, the function returns i-1. If the value is smaller than the first
@@ -671,7 +706,7 @@ return
 
 
     function FullAdder(a, b, carry_in) result(results)
-    ! FullAdder implements a full adder, to perform addition on binary numbers.
+    ! Implement a full adder, to perform addition on binary numbers.
     !
     ! Inputs
     !   a, b (logicals) : operands of the addition
@@ -690,21 +725,17 @@ return
 
 
     subroutine Increment(C)
-    ! Increment increments a binary counter.
+    ! Increment a binary counter.
     !
     ! Inputs
     !   C (logical array) : the counter to increment,
     !                       with the rightmost bit being the lower level.
         implicit none
         logical, intent(inout) :: C(:)
-        logical :: sumcarry(2), hasFalse
+        logical :: sumcarry(2)
         integer :: N, k, i
         N = size(C)
-        hasFalse = .false.
-        do i = 1, N
-            if (.not. C(i)) hasFalse = .true.
-        end do
-        if (.not. hasFalse) then  ! counter has reached max capacity
+        if ( all(C) ) then  ! counter has reached max capacity
             C = .false.  ! reset counter
         else  ! increment counter using binary addition
             sumcarry = FullAdder(C(N), .true., .false.)
@@ -720,7 +751,7 @@ return
 
 
     function Correction(defrost_mode, recov_penalty)
-    ! Correction provides the correction factor to apply to the input power
+    ! Provide the correction factor to apply to the input power
     ! and heating capacity depending on the defrost mode.
     !
     ! Inputs
@@ -743,19 +774,27 @@ return
             ! add warning
         end if
     end function Correction
-
+    
+    
+    subroutine ForceZeroPerformance
+        Qcs = 0.0_wp
+        Qcl = 0.0_wp
+        Qh = 0.0_wp
+        Qc = 0.0_wp
+        Pel = 0.0_wp
+    end subroutine ForceZeroPerformance
         
     subroutine ExecuteFirstCallOfSimulation
   	    call SetNumberofParameters(10)
   	    call SetNumberofInputs(16)
   	    call SetNumberofDerivatives(0)
-  	    call SetNumberofOutputs(22)
+  	    call SetNumberofOutputs(23)
   	    call SetIterationMode(1)
-  	    call SetNumberStoredVariables(0, 0)
+  	    call SetNumberStoredVariables(0, 2)
   	    call SetNumberofDiscreteControls(0)
 
         ! Allocate stored data structure
-        if (.not. allocated(s)) then
+        if ( .not. allocated(s) ) then
             allocate(s(Ninstances))
         endif
 
@@ -790,11 +829,15 @@ return
         call SetOutputValue(20, 0.0_wp)  ! Condensate flow rate
         call SetOutputValue(21, 0.0_wp)  ! Defrost mode
         call SetOutputValue(22, 0.0_wp)  ! Force shutdown
+        call SetOutputValue(23, 0.0_wp)  ! Force shutdown alternations
+        
+        call SetDynamicArrayInitialValue(1, 0.0_wp)  ! Force shutdowns counter
+        call SetDynamicArrayInitialValue(2, 0.0_wp)  ! Constant extrapolations counter
     end subroutine ExecuteStartTime
 
 
     subroutine ExecuteEndOfTimestep
-        continue
+        shutdown_alt = 0
     end subroutine ExecuteEndOfTimestep
 
     subroutine ExecuteLastCallOfSimulation
@@ -807,6 +850,39 @@ return
         deallocate(s(Ni)%QcsMap)
         deallocate(s(Ni)%QclMap)
         deallocate(s(Ni)%QhMap)
+        
+        ! Force shutdowns warning
+        shutdowns = int(GetDynamicArrayValueLastTimestep(1))
+        shutdown_fraction = 100.0_wp * shutdowns / real(GetNTimeSteps() - 1, wp)
+        if (shutdowns > 0) then
+            write(aString,'(g)') shutdowns
+            write(bString,'(g)') shutdown_fraction
+            aString = 'Heat pump was forced to shut down  for'&
+                //trim(adjustl(aString))//' time steps ( '//trim(adjustl(bString))//'% of the simulation)'
+    
+            if (shutdown_fraction < 5) Then
+                call Messages(-1, aString, 'Notice', thisUnit, thisType)
+            else
+                call Messages(-1, aString, 'Warning', thisUnit, thisType)
+            end if
+        end if
+        
+        ! Constant extrapolations warning
+        extrapolations = int(GetDynamicArrayValueLastTimestep(2))
+        extrapolation_fraction = 100.0_wp * extrapolations / real(GetNTimeSteps() - 1, wp)
+        if (extrapolations > 0) then
+            write(aString,'(g)') extrapolations
+            write(bString,'(g)') extrapolation_fraction
+            aString = 'Performance was extrapolated using the closest values in the performance map for '&
+                //trim(adjustl(aString))//' time steps ('//trim(adjustl(bString))//'% of the simulation)'
+    
+            if (extrapolation_fraction < 5.0_wp) then
+                call Messages(-1, aString, 'Notice', thisUnit, thisType)
+            else
+                call Messages(-1, aString, 'Warning', thisUnit, thisType)
+            end if
+        end if
+        
     end subroutine ExecuteLastCallOfSimulation
 
 
@@ -867,6 +943,8 @@ return
         call SetOutputValue(20, cmfr)  ! Condensate flow rate
         call SetOutputValue(21, real(defrost_mode, wp))  ! Defrost mode
         call SetOutputValue(22, merge(1.0_wp, 0.0_wp, shutdown))  ! Force shutdown
+        call SetOutputValue(22, merge(1.0_wp, 0.0_wp, shutdown))  ! Force shutdown
+        call SetOutputValue(23, shutdown_alt)  ! Force shutdown alternations
     end subroutine SetOutputValues
 
 end subroutine Type3254
