@@ -43,8 +43,9 @@
 !  6 | AFRrated     | Rated inlet air mass flow rate                | kg/h          | kg/h
 !  7 | freqRatedHeat| Rated heating frequency                       | 1/s           | 1/s
 !  8 | freqRatedCool| Rated cooling frequency                       | 1/s           | 1/s
-!  9 | LUcool       | Logical Unit - cooling mode                   | -             | -
-! 10 | LUheat       | Logical Unit - heating mode                   | -             | -
+!  9 | backupHeat   | Backup heater capacity                        | kJ/h          | kJ/h
+! 10 | LUcool       | Logical Unit - cooling mode                   | -             | -
+! 11 | LUheat       | Logical Unit - heating mode                   | -             | -
 ! --------------------------------------------------------------------------------------------------
 
 ! Outputs
@@ -123,7 +124,7 @@ real(wp) :: time, dt  ! TRNSYS time and timestep
 real(wp) :: Tr, wr, RHr, mDot, AFR, pr, Toa, woa, RHoa, poa, freq, PfanI, PfanO  ! Inputs
 integer :: mode, defrost_mode = 1  ! assume that the heat pump starts up at the beginning -> start with transient state
 integer :: psymode, LUcool, LUheat  ! Parameters
-real(wp) :: PelcRated, QcRated, PelhRated, QhRated, AFRrated, freqRatedh, freqRatedc  ! Parameters (rated values)
+real(wp) :: PelcRated, QcRated, PelhRated, QhRated, AFRrated, freqRatedh, freqRatedc, backupHeat  ! Parameters (rated values)
 real(wp) :: Ts, ws, RHs, ps  ! Outputs (supply conditions)
 real(wp) :: Pel, Qc, Qcs, Qcl, Qrej, Qh, Qabs, Pcomp  ! Outputs (heat and power)
 real(wp) :: fComp, COP, EER, Tc, cmfr, recov_penalty  ! Outputs (misc)
@@ -193,11 +194,10 @@ if (ErrorFound()) return
 ! Ni = GetCurrentUnit()
 
 defrost_cooling = (mode == 1) .and. (defrost_mode == 0)
+N = Nc * (1 - mode) + Nh * mode  ! Number of interpolation variables
 if ( mode == 0 .or. defrost_cooling ) then
-    N = Nc  ! Number of interpolation variables, depending on the operating mode.
     Nout = Noutc  ! Number of output values for the interpolation.
 else
-    N = Nh
     Nout = Nouth
 end if
 
@@ -219,71 +219,71 @@ RHr = psydat(4)  ! RHr between 0 and 1 (not 0 and 100)
 wr = psydat(6)
 hr = psydat(7)
 dr = psydat(9)
-if (AFR >= 0) then
+if (AFR >= 0.0_wp) then
     mDot = AFR * AFRrated * dr  ! use normalized AFR as input if it is positive
 else
     AFR = mDot / (dr * AFRrated)
 endif
 
-!if (mode == 1) then ! compute outdoor air wet bulb for the interpolation
-!    psydat(1) = poa
-!    psydat(2) = Toa
-!    psydat(4) = RHoa/100.0_wp
-!    psydat(6) = woa
-!    call MoistAirProperties(thisUnit, thisType, 1, psymode, 1, psydat, 1, status)
-!    Twboa = psydat(3)
-!    defrost_corr = Correction(defrost_mode, recov_penalty)
-!end if
-
-if (freq > 0) then
+if (freq > 0.0_wp) then
     ! Interpolate using wet bulb in cooling
     allocate(point(N))
-    point(1) = Tr
-    if ( mode == 0 .or. defrost_cooling ) then
-        point(2) = Twbr
-        point(3) = Toa
-        point(4) = AFR
-        point(5) = freq
-    else
-        point(2) = Toa
-        point(3) = AFR
-        point(4) = freq
+    if (mode == 1) then
+        point = (/Tr, Toa, AFR, freq/)
+        shutdown = CheckShutdown(point, 1, Nh)
+        if ( defrost_cooling .and. .not. shutdown ) then
+            deallocate(point)
+            allocate(point(Nc))
+        end if
         defrost_corr = Correction(defrost_mode, recov_penalty)
     end if
-    allocate(interpolation_results(Nout))
-    if (defrost_cooling) then
-        interpolation_results = Interpolate(point, 0, Nout)
-        continue
-    else
-        interpolation_results = Interpolate(point, mode, Nout)
+    
+    if ( (mode == 0) .or. (defrost_cooling .and. .not. shutdown) ) then
+        point = (/Tr, Twbr, Toa, AFR, freq/)
+        shutdown = CheckShutdown(point, 0, Nc)
     end if
-    deallocate(point)
+    
     previous_shutdown = GetOutputValue(22) == 1.0_wp
     if ( previous_shutdown .neqv. shutdown ) shutdown_alt = GetOutputValue(23) + 1
-    if (shutdown_alt > 4) then
-        shutdown = previous_shutdown
-        if (shutdown) call ForceZeroPerformance()
+    if (shutdown_alt > 4) shutdown = previous_shutdown
+    
+    if (shutdown) then
+        call ForceZeroPerformance()
+        call SetDynamicArrayValueThisIteration(1, GetDynamicArrayValueLastTimestep(1) + 1.0_wp)
+        fcomp = 0.0_wp  ! force shutdown -> set output frequency to zero
+        if ( (mode == 1) .and. (freq > 0.0_wp) ) then  ! only activate auxiliary when required by the controller
+            Qh = backupHeat
+            Pel = backupHeat
+        end if
     else
+        allocate(interpolation_results(Noutc + Nouth - 1))
+        
+        if (defrost_cooling) then
+            interpolation_results = Interpolate(point, 0, Nout)
+            if (OutOfRange(point, 0)) call SetDynamicArrayValueThisIteration(2, GetDynamicArrayValueLastTimestep(2) + 1.0_wp)
+        else
+            interpolation_results = Interpolate(point, mode, Nout)
+            if (OutOfRange(point, mode)) call SetDynamicArrayValueThisIteration(2, GetDynamicArrayValueLastTimestep(2) + 1.0_wp)
+        end if
+        
         if ( mode == 0 .or. defrost_cooling ) then
             Pel = interpolation_results(1) * PelcRated
         else
             Pel = interpolation_results(1) * PelhRated * defrost_corr(1)
         end if
+        
         Qcs = interpolation_results(2) * QcRated
         Qcl = interpolation_results(3) * QcRated
         Qh = interpolation_results(4) * QhRated * defrost_corr(2)
         Qc = Qcs + Qcl
+        
+        deallocate(interpolation_results)
     end if
-    deallocate(interpolation_results)
+    
+    deallocate(point)
 else
     call ForceZeroPerformance()
 endif
-
-
-if (shutdown) then
-    call SetDynamicArrayValueThisIteration(1, GetDynamicArrayValueLastTimestep(1) + 1.0_wp)
-    fcomp = 0.0_wp  ! force shutdown -> set output frequency to zero
-end if
 
 
 ! Determine supply air state
@@ -340,7 +340,12 @@ else if (freq > 0.0_wp) then
     Qrej = 0.0_wp
     Qabs = Qh - Pel  ! Heat absorption in ambient air
 end if
-if (freq > 0.0_wp) Pcomp = Pel - PfanI - PfanO  ! Compressor power
+
+if (fcomp > 0.0_wp) then
+    Pcomp = Pel - PfanI - PfanO  ! Compressor power
+else
+    Pcomp = 0.0_wp
+end if
 
 ! COP, EER and condensate
 if (Pel /= 0.0_wp) then
@@ -487,6 +492,59 @@ return
             i = i / extents(j)
         end do
     end function RowToColMajorOrder
+    
+    
+    function OutOfRange(conditions, mode)
+    ! Check whether the input conditions are within the operating ranges
+    ! specified in the performance map.
+    !
+    ! Inputs
+    !   conditions (real(wp) array) : input conditions.
+    !   mode (integer) : operating mode, cooling (0) or heating (1)
+    !
+    ! Output
+    !   inRange (logical) : true if all conditions are within their operating range,
+    !                       false otherwise.
+        real(wp), intent(in) :: conditions(N)
+        integer, intent(in) :: mode
+        integer :: i
+        logical :: outOfRange
+
+        outOfRange = .false.
+        do i = 1, N
+            if ( (point(i) > s(Ni)%ubounds(i, mode)) .or. (point(i) < s(Ni)%lbounds(i, mode)) ) then
+                outOfRange = .true.
+                exit
+            end if
+        end do
+    end function OutOfRange
+
+    
+    
+    function CheckShutdown(conditions, mode, N) result(shutdown)
+    ! Check whether the heat pump should be forced to shut down
+    ! because of invalid input conditions.
+    !
+    ! Inputs
+    !   conditions (real(wp) array) : input conditions.
+    !   mode (integer) : operating mode, cooling (0) or heating (1)
+    
+        integer, intent(in) :: mode, N
+        real(wp), intent(in) :: conditions(N)
+        integer :: i
+        logical :: increasing(N), shutdown
+        
+        if (mode == 0) increasing = (/.true., .false., .false., .true., .true./)
+        if (mode == 1) increasing = (/.false., .true., .true., .true./)
+        shutdown = .false.
+        do i = 1, N
+            if ( increasing(i) .and. (point(i) < s(Ni)%lbounds(i, mode)) .or. &
+            (.not. increasing(i)) .and. (point(i) > s(Ni)%ubounds(i, mode)) ) then
+                shutdown = .true.
+                exit
+            end if
+        end do
+    end function CheckShutdown
 
 
     function Interpolate(point, mode, Nout) result(interpolation)
@@ -495,7 +553,7 @@ return
     !
     ! Inputs
     !   point (real(wp) array) : point where the interpolation has to be performed.
-    !   mode (integer) : operating mode, cooling (0) or heating(1)
+    !   mode (integer) : operating mode, cooling (0) or heating (1)
     !   Nout (integer) : number of tables for the interpolation,
     !                    also the number of required output values.
     !
@@ -506,103 +564,56 @@ return
         real(wp), allocatable :: hypercube(:, :)
         integer, intent(in) :: mode
         integer, dimension(N) :: idx, lb_idx, counter_int
-        integer :: i, flag
-        logical :: counter_bool(N), increasing(N), in_range
+        integer :: i
+        logical :: counter_bool(N)
         integer, intent(in) :: Nout
         real(wp) :: interpolation(Noutc + Nouth - 1)
         
-        ! Check if point is within the operating range before interpolation
-        if (mode == 0) increasing = (/.true., .false., .false., .true., .true./)
-        if (mode == 1) increasing = (/.false., .true., .true., .true./)
-        in_range = .true.
-        shutdown = .false.
+        ! Map the point to the unit N-hypercube with the table values bounding the point
         do i = 1, N
-            if ( increasing(i) .and. (point(i) < s(Ni)%lbounds(i, mode)) .or. &
-            (.not. increasing(i)) .and. (point(i) > s(Ni)%ubounds(i, mode)) ) then
-                in_range = .false.
-                shutdown = .true.
-                interpolation = 0.0_wp
-                exit
-            end if
+            ! Find the index of the lower bound for the ith component of point
+            j = Findlb(s(Ni)%entries(:, i, mode), point(i), s(Ni)%extents(i, mode))
+            lb_idx(i) = j
+            left = s(Ni)%entries(j, i, mode)
+            right = s(Ni)%entries(j+1, i, mode)
+            ! Compute the scaled point, and keep it between 0 and 1
+            scaled_point(i) = min(1.0_wp, max(0.0_wp, (point(i) - left) / (right - left)))
+        end do
+        allocate(hypercube(Nout, 2**N))
+        counter_bool = .true.  ! All N values of the binary counter are initialized at 1
+        do i = 1, 2**N
+            call Increment(counter_bool)
+            counter_int = merge(1, 0, counter_bool)  ! convert logical to int
+            idx = lb_idx + counter_int  ! index of each of the 2**N vertices
+            hypercube(:, i) = Vertex(idx, mode)  ! Get table values associated with the vertices
+        end do
+                    
+        ! Interpolate using the scaled point and the table values
+        do i = 1, N
+            sp = scaled_point(i)
+            j = N - i
+            hypercube(:, :2**j) = (1-sp) * hypercube(:, :2**j) &
+                                    + sp * hypercube(:, 2**j+1:2**(j+1))
         end do
         
-        ! Allow to go below the lower outdoor temperature limit during defrost operation
-        if ( shutdown .and. defrost_cooling .and. (i == 3) .and. (point(3) >= s(Ni)%lbounds(2, 1)) ) shutdown = .false.
-        
-        if (in_range) then
-            do i = 1, N
-                if ( increasing(i) .and. (point(i) > s(Ni)%ubounds(i, mode)) .or. &
-                (.not. increasing(i)) .and. (point(i) < s(Ni)%lbounds(i, mode)) ) then
-                    in_range = .false.
-                    exit
-                end if
+        if (mode == 0) then  ! cooling -> fill the first Noutc values, the rest are zeros
+            do i = 1, Noutc
+                interpolation(i) = hypercube(i, 1)
+            end do
+            do i = Noutc+1, Noutc+Nouth-1
+                interpolation(i) = 0.0_wp
+            end do
+        else  ! heating -> first value is still the input power, values 2 through Noutc are zeros
+            interpolation(1) = hypercube(1, 1)
+            do i = 2, Noutc
+                interpolation(i) = 0.0_wp
+            end do
+            do i = Noutc+1, Noutc+Nouth-1
+                interpolation(i) = hypercube(i-Noutc+1, 1)
             end do
         end if
         
-        
-        if ( .not. shutdown ) then
-            ! Map the point to the unit N-hypercube with the table values bounding the point
-            do i = 1, N
-                ! Find the index of the lower bound for the ith component of point
-                j = Findlb(s(Ni)%entries(:, i, mode), point(i), s(Ni)%extents(i, mode))
-                lb_idx(i) = j
-                left = s(Ni)%entries(j, i, mode)
-                right = s(Ni)%entries(j+1, i, mode)
-                ! Compute the scaled point, and keep it between 0 and 1
-                scaled_point(i) = min(1.0_wp, max(0.0_wp, (point(i) - left) / (right - left)))
-            end do
-            allocate(hypercube(Nout, 2**N))
-            counter_bool = .true.  ! All N values of the binary counter are initialized at 1
-            do i = 1, 2**N
-                call Increment(counter_bool)
-                counter_int = merge(1, 0, counter_bool)  ! convert logical to int
-                idx = lb_idx + counter_int  ! index of each of the 2**N vertices
-                hypercube(:, i) = Vertex(idx, mode)  ! Get table values associated with the vertices
-                if ( any(abs(hypercube(:, i) + 1e12) < 1e-12) ) then  ! Check for "force sutdown" flags
-                    deallocate(hypercube)
-                    interpolation = 0.0_wp
-                    shutdown = .true.
-                    exit
-                end if
-            end do
-        end if
-        
-        if ( .not. shutdown ) then
-            do i = 1, 2**N
-                do j = 1, Nout
-                    if ( hypercube(j, i) < 0.0_wp ) then
-                        hypercube(j, i) = - hypercube(j, i)
-                        in_range = .false.
-                    end if
-                end do
-            end do
-                    
-            ! Interpolate using the scaled point and the table values
-            do i = 1, N
-                sp = scaled_point(i)
-                j = N - i
-                hypercube(:, :2**j) = (1-sp) * hypercube(:, :2**j) &
-                                        + sp * hypercube(:, 2**j+1:2**(j+1))
-            end do
-            if (mode == 0) then  ! cooling -> fill the first Noutc values, the rest are zeros
-                do i = 1, Noutc
-                    interpolation(i) = hypercube(i, 1)
-                end do
-                do i = Noutc+1, Noutc+Nouth-1
-                    interpolation(i) = 0.0_wp
-                end do
-            else  ! heating -> first value is still the input power, values 2 through Noutc are zeros
-                interpolation(1) = hypercube(1, 1)
-                do i = 2, Noutc
-                    interpolation(i) = 0.0_wp
-                end do
-                do i = Noutc+1, Noutc+Nouth-1
-                    interpolation(i) = hypercube(i-Noutc+1, 1)
-                end do
-            end if
-            deallocate(hypercube)
-            if (in_range) call SetDynamicArrayValueThisIteration(2, GetDynamicArrayValueLastTimestep(2) + 1.0_wp)
-        end if
+        deallocate(hypercube)
     end function Interpolate
 
 
@@ -785,7 +796,7 @@ return
     end subroutine ForceZeroPerformance
         
     subroutine ExecuteFirstCallOfSimulation
-  	    call SetNumberofParameters(10)
+  	    call SetNumberofParameters(11)
   	    call SetNumberofInputs(16)
   	    call SetNumberofDerivatives(0)
   	    call SetNumberofOutputs(23)
@@ -895,8 +906,10 @@ return
         AFRrated = GetParameterValue(6)
         freqRatedc = GetParameterValue(7)
         freqRatedh = GetParameterValue(8)
-        LUcool = GetParameterValue(9)
-        LUheat = GetParameterValue(10)
+        backupHeat = GetParameterValue(9)
+        if (backupHeat < 0.0_wp) backupHeat = QhRated
+        LUcool = GetParameterValue(10)
+        LUheat = GetParameterValue(11)
     end subroutine ReadParameters
 
 

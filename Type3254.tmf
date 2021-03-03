@@ -43,7 +43,7 @@ __
 __
 __
 __
-48
+49
 Return air temperature
 SN
 1
@@ -712,6 +712,22 @@ real
 0
 1/S
 Frequency
+Backup heater capacity
+SN
+2
+The capacity of the backup heater that is used when the heat pump cannot work due to extreme conditions.
+If the value is -1, the same value as the heating rated capacity will be used.
+simple
+real
+3
++
+-Inf
++Inf
+[ ; ]
+-1.0
+0
+kJ/hr
+Power
 Logical Unit - cooling mode
 SN
 1
@@ -901,7 +917,7 @@ Logical Unit - heating mode
 1
 100
 0
-9
+10
 0
 
 
