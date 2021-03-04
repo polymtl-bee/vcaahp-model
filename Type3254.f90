@@ -26,8 +26,6 @@
 !                   | 1 = recovery mode (transient)                 |               |
 !                   | 2 = steady-state mode                         |               |
 ! 14 | recov_penalty| Penalty factor for defrost recovery mode      | -             | -
-! 15 | PfanI        | Indoor fan power                              | kJ/h          | kJ/h
-! 16 | PfanO        | Outdoor fan power                             | kJ/h          | kJ/h
 ! --------------------------------------------------------------------------------------------------
 
 ! Parameters
@@ -43,9 +41,11 @@
 !  6 | AFRrated     | Rated inlet air mass flow rate                | kg/h          | kg/h
 !  7 | freqRatedHeat| Rated heating frequency                       | 1/s           | 1/s
 !  8 | freqRatedCool| Rated cooling frequency                       | 1/s           | 1/s
-!  9 | backupHeat   | Backup heater capacity                        | kJ/h          | kJ/h
-! 10 | LUcool       | Logical Unit - cooling mode                   | -             | -
-! 11 | LUheat       | Logical Unit - heating mode                   | -             | -
+!  9 | PfanRatedIn  | Indoor fan rated power                        | kJ/h          | kJ/h
+! 10 | PfanRatedOut | Outdoor fan rated power                       | kJ/h          | kJ/h
+! 11 | backupHeat   | Backup heater capacity                        | kJ/h          | kJ/h
+! 12 | LUcool       | Logical Unit - cooling mode                   | -             | -
+! 13 | LUheat       | Logical Unit - heating mode                   | -             | -
 ! --------------------------------------------------------------------------------------------------
 
 ! Outputs
@@ -66,8 +66,8 @@
 ! 12 | Pel          | Total power consumption                       | kJ/h          | kJ/h
 ! 13 | COP          | Coefficient of performance                    | -             | -
 ! 14 | EER          | Energy efficiency rating                      | -             | -
-! 15 | PfanI        | Indoor fan power                              | kJ/h          | kJ/h
-! 16 | PfanO        | Outdoor fan power                             | kJ/h          | kJ/h
+! 15 | PfanIn       | Indoor fan power                              | kJ/h          | kJ/h
+! 16 | PfanOut      | Outdoor fan power                             | kJ/h          | kJ/h
 ! 17 | Pcomp        | Compressor power                              | kJ/h          | kJ/h
 ! 18 | fComp        | Compressor frequency                          | 1/s           | 1/s
 ! 19 | Tc           | Condensate temperature                        | °C            | °C
@@ -121,12 +121,13 @@ integer :: thisUnit, thisType  ! unit and type numbers
 real(wp) :: time, dt  ! TRNSYS time and timestep
 
 ! Proforma variables
-real(wp) :: Tr, wr, RHr, mDot, AFR, pr, Toa, woa, RHoa, poa, freq, PfanI, PfanO  ! Inputs
+real(wp) :: Tr, wr, RHr, mDot, AFR, pr, Toa, woa, RHoa, poa, freq  ! Inputs
 integer :: mode, defrost_mode = 1  ! assume that the heat pump starts up at the beginning -> start with transient state
 integer :: psymode, LUcool, LUheat  ! Parameters
-real(wp) :: PelcRated, QcRated, PelhRated, QhRated, AFRrated, freqRatedh, freqRatedc, backupHeat  ! Parameters (rated values)
+real(wp) :: PelcRated, QcRated, PelhRated, QhRated, AFRrated ! Parameters (rated values)
+real(wp) :: freqRatedh, freqRatedc, PfanRatedIn, PfanRatedOut, backupHeat
 real(wp) :: Ts, ws, RHs, ps  ! Outputs (supply conditions)
-real(wp) :: Pel, Qc, Qcs, Qcl, Qrej, Qh, Qabs, Pcomp  ! Outputs (heat and power)
+real(wp) :: Pel, Qc, Qcs, Qcl, Qrej, Qh, Qabs, Pcomp, PfanIn, PfanOut  ! Outputs (heat and power)
 real(wp) :: fComp, COP, EER, Tc, cmfr, recov_penalty  ! Outputs (misc)
 
 
@@ -219,11 +220,15 @@ RHr = psydat(4)  ! RHr between 0 and 1 (not 0 and 100)
 wr = psydat(6)
 hr = psydat(7)
 dr = psydat(9)
+
 if (AFR >= 0.0_wp) then
     mDot = AFR * AFRrated * dr  ! use normalized AFR as input if it is positive
 else
     AFR = mDot / (dr * AFRrated)
 endif
+
+PfanIn = PfanRatedIn * AFR**3  ! Adjust the fan power according to the flowrate
+PfanOut = PfanRatedOut  ! Assume constant speed for outdoor fan
 
 if (freq > 0.0_wp) then
     ! Interpolate using wet bulb in cooling
@@ -342,7 +347,7 @@ else if (freq > 0.0_wp) then
 end if
 
 if (fcomp > 0.0_wp) then
-    Pcomp = Pel - PfanI - PfanO  ! Compressor power
+    Pcomp = max(0.0_wp, Pel - PfanIn - PfanOut)  ! Compressor power
 else
     Pcomp = 0.0_wp
 end if
@@ -796,8 +801,8 @@ return
     end subroutine ForceZeroPerformance
         
     subroutine ExecuteFirstCallOfSimulation
-  	    call SetNumberofParameters(11)
-  	    call SetNumberofInputs(16)
+  	    call SetNumberofParameters(13)
+  	    call SetNumberofInputs(14)
   	    call SetNumberofDerivatives(0)
   	    call SetNumberofOutputs(23)
   	    call SetIterationMode(1)
@@ -906,10 +911,12 @@ return
         AFRrated = GetParameterValue(6)
         freqRatedc = GetParameterValue(7)
         freqRatedh = GetParameterValue(8)
-        backupHeat = GetParameterValue(9)
+        PfanRatedIn = GetParameterValue(9)
+        PfanRatedOut = GetParameterValue(10)
+        backupHeat = GetParameterValue(11)
         if (backupHeat < 0.0_wp) backupHeat = QhRated
-        LUcool = GetParameterValue(10)
-        LUheat = GetParameterValue(11)
+        LUcool = GetParameterValue(12)
+        LUheat = GetParameterValue(13)
     end subroutine ReadParameters
 
 
@@ -928,8 +935,6 @@ return
         mode = GetInputValue(12)
         defrost_mode = GetInputValue(13)
         recov_penalty = GetInputValue(14)
-        PfanI = GetInputValue(15)
-        PfanO = GetInputValue(16)
     end subroutine GetInputValues
 
 
@@ -948,8 +953,8 @@ return
         call SetOutputValue(12, Pel)  ! Total power consumption
         call SetOutputValue(13, COP)  ! COP
         call SetOutputValue(14, EER)  ! EER
-        call SetOutputValue(15, PfanI)  ! Indoor fan power
-        call SetOutputValue(16, PfanO)  ! Outdoor fan power
+        call SetOutputValue(15, PfanIn)  ! Indoor fan power
+        call SetOutputValue(16, PfanOut)  ! Outdoor fan power
         call SetOutputValue(17, Pcomp)  ! Compressor power
         call SetOutputValue(18, fComp)  ! Compressor frequency
         call SetOutputValue(19, Tc)  ! Condensate temperature

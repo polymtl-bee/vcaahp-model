@@ -667,36 +667,6 @@ real
 0
 -
 dimensionless
-Indoor fan power
-SN
-1
-The power input for the indoor unit fan.
-simple
-real
-1
-+
--Inf
-+Inf
-[ ; ]
-0.0
-0
-kJ/hr
-Power
-Outdoor fan power
-SN
-1
-The power input for the outdoor unit fan.
-simple
-real
-1
-+
--Inf
-+Inf
-[ ; ]
-0.0
-0
-kJ/hr
-Power
 Rated heating frequency
 SN
 1
@@ -712,6 +682,36 @@ real
 0
 1/S
 Frequency
+Indoor unit fan rated power
+SN
+1
+The rated power of the indoor unit fan.
+simple
+real
+3
++
+0.0
++Inf
+[ ; ]
+0.0
+0
+kJ/hr
+Power
+Outdoor unit fan rated power
+SN
+1
+The rated power of the outdoor unit fan.
+simple
+real
+3
++
+0.0
++Inf
+[ ; ]
+0.0
+0
+kJ/hr
+Power
 Backup heater capacity
 SN
 2
@@ -903,7 +903,7 @@ Logical Unit - heating mode
 0
 0
 0
-15
+13
 0
 
 
@@ -917,7 +917,7 @@ Logical Unit - heating mode
 1
 100
 0
-10
+12
 0
 
 
