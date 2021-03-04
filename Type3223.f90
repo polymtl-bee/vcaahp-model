@@ -216,90 +216,96 @@ if (fmax < 0.0_wp) then
     end if
 end if
 
-! Assign fixed frequency value depending on error signal
-modulate = .false.
-if (onOff <= 0) then
-    fi = 0.0_wp
-    fq = 0.0_wp
-else if ( e < s(Ni)%e_min(mode) ) then  ! e < e_min
-    fq = (1 - real(mode, wp)) * fmax  ! 0 in heating, fmax in cooling
-else if ( e > s(Ni)%e_max(mode) ) then  ! e > e_max
-    fq = real(mode, wp) * fmax  ! fmax in heating, 0 in cooling
-else
-    modulate = .true.
-end if
-
-! Adjust the sign of the error depending on the operating mode
-e = (Tset - Tr) * (2.0_wp * real(mode, wp) - 1.0_wp)
-call RecallStoredPIvalues()
-fq_prev = GetDynamicArrayValueLastTimestep(13)
-
-if (modulate) then
-    ! Default values for extra parameters
-    if (tt < 0.0_wp) tt = ti
-    if (b < 0.0_wp) b = 1.0_wp
-
-    fp = Kc * (b*Tset - Tr) * (2.0_wp * real(mode, wp) - 1.0_wp)  ! Proportional signal
-    if (ti > 0.0_wp) then  ! Integral action
-        fi = fi_old + Kc / ti * dt * (e + e_old) / 2  ! Update the integral (using trapezoidal integration).
-    else
-        fi = fi_old
-    endif
-    f = fp + fi  ! Unsaturated signal
-    if ( tt > 0.0_wp .and. (f < fmin .or. f > fmax) ) then
-        es = f - min(fmax, max(fmin, f))  ! Error with saturated signal
-        fi = fi - dt * (es + es_old) / 2 / tt  ! De-saturate integral signal
-        f = fp + fi  ! Re-calculate the unsaturated signal
-    endif
-    if ( GetTimestepIteration() > nIterMax ) then
-        fq = fq_prev
-    else if ( f > fmin / 2.0_wp ) then
-        fsat = min(fmax, max(fmin, f))  ! Saturated signal
-        fq = (1.0_wp * floor(N * fsat)) / (1.0_wp * N)  ! Quantized signal
-    else
-        fq = 0.0_wp
-    end if
-else
-    fi = 0.0_wp
-!else if ((ti > 0.0_wp) .and. (onOff > 0)) then  ! even though there is no frequency modulation, the integral must be updated
-    !fi = fi_old + Kc / ti * dt * (e + e_old) / 2
-end if
-call StorePIvalues()
-
-t_mnt = GetDynamicArrayValueLastTimestep(12)
-dfdt_sign_prev = int(GetDynamicArrayValueLastTimestep(14))
-if (fq > fq_prev) then  ! frequency is increasing
-    dfdt_sign = 1
-else if (fq < fq_prev) then  ! frequency is decreasing
-    dfdt_sign = -1
-else
-    dfdt_sign = dfdt_sign_prev
-end if
-
-if ( dfdt_sign * dfdt_sign_prev == -1 ) then  ! previous timestep was a local extremum
-    if (t_mnt <= t_mnt_min) then
-        fq = fq_prev  ! keep the previous frequency value
-        t_mnt = t_mnt + dt  ! increment monotonous frequency timer
-        dfdt_sign = dfdt_sign_prev  ! keep the same direction of frequency evolution
-    else
-        t_mnt = 0.0_wp  ! reset the timer
-    end if
-else
-    t_mnt = t_mnt + dt
-end if
-call SetDynamicArrayValueThisIteration(12, t_mnt)
-call SetDynamicArrayValueThisIteration(13, fq)
-call SetDynamicArrayValueThisIteration(14, real(dfdt_sign, wp))
-
-if ( abs(fq - fmax) < 0.001_wp .and. fmaxBoost ) then  ! Heat pump operates at boost frequency
-    t_boost = t_boost + dt  ! increment the boost frequency timer
-else
-    t_boost = 0.0_wp  ! reset the timer
-endif
-call SetDynamicArrayValueThisIteration(7, real(t_boost, wp))
-
 if ( defrost_mode == -1 .and. mode == 1 ) call SetDefrostMode(defrost_mode)  ! automatic defrost selection
 if (mode == 1) recov_penalty = RecoveryPenalty(t_ld, t_rec)  ! if () because risk of division by zero
+
+
+if (mode == 1 .and. defrost_mode == 0) then
+    fq = 1.0_wp  ! Fix rated frequency during defrost
+    fi = 0.0_wp  ! Reset integral
+else
+    ! Assign fixed frequency value depending on error signal
+    modulate = .false.
+    if (onOff <= 0) then
+        fi = 0.0_wp
+        fq = 0.0_wp
+    else if ( e < s(Ni)%e_min(mode) ) then  ! e < e_min
+        fq = (1 - real(mode, wp)) * fmax  ! 0 in heating, fmax in cooling
+    else if ( e > s(Ni)%e_max(mode) ) then  ! e > e_max
+        fq = real(mode, wp) * fmax  ! fmax in heating, 0 in cooling
+    else
+        modulate = .true.
+    end if
+
+    ! Adjust the sign of the error depending on the operating mode
+    e = (Tset - Tr) * (2.0_wp * real(mode, wp) - 1.0_wp)
+    call RecallStoredPIvalues()
+    fq_prev = GetDynamicArrayValueLastTimestep(13)
+
+    if (modulate) then
+        ! Default values for extra parameters
+        if (tt < 0.0_wp) tt = ti
+        if (b < 0.0_wp) b = 1.0_wp
+
+        fp = Kc * (b*Tset - Tr) * (2.0_wp * real(mode, wp) - 1.0_wp)  ! Proportional signal
+        if (ti > 0.0_wp) then  ! Integral action
+            fi = fi_old + Kc / ti * dt * (e + e_old) / 2  ! Update the integral (using trapezoidal integration).
+        else
+            fi = fi_old
+        endif
+        f = fp + fi  ! Unsaturated signal
+        if ( tt > 0.0_wp .and. (f < fmin .or. f > fmax) ) then
+            es = f - min(fmax, max(fmin, f))  ! Error with saturated signal
+            fi = fi - dt * (es + es_old) / 2 / tt  ! De-saturate integral signal
+            f = fp + fi  ! Re-calculate the unsaturated signal
+        endif
+        if ( GetTimestepIteration() > nIterMax ) then
+            fq = fq_prev
+        else if ( f > fmin / 2.0_wp ) then
+            fsat = min(fmax, max(fmin, f))  ! Saturated signal
+            fq = (1.0_wp * floor(N * fsat)) / (1.0_wp * N)  ! Quantized signal
+        else
+            fq = 0.0_wp
+        end if
+    else
+        fi = 0.0_wp
+    !else if ((ti > 0.0_wp) .and. (onOff > 0)) then  ! even though there is no frequency modulation, the integral must be updated
+        !fi = fi_old + Kc / ti * dt * (e + e_old) / 2
+    end if
+    call StorePIvalues()
+
+    t_mnt = GetDynamicArrayValueLastTimestep(12)
+    dfdt_sign_prev = int(GetDynamicArrayValueLastTimestep(14))
+    if (fq > fq_prev) then  ! frequency is increasing
+        dfdt_sign = 1
+    else if (fq < fq_prev) then  ! frequency is decreasing
+        dfdt_sign = -1
+    else
+        dfdt_sign = dfdt_sign_prev
+    end if
+
+    if ( dfdt_sign * dfdt_sign_prev == -1 ) then  ! previous timestep was a local extremum
+        if (t_mnt <= t_mnt_min) then
+            fq = fq_prev  ! keep the previous frequency value
+            t_mnt = t_mnt + dt  ! increment monotonous frequency timer
+            dfdt_sign = dfdt_sign_prev  ! keep the same direction of frequency evolution
+        else
+            t_mnt = 0.0_wp  ! reset the timer
+        end if
+    else
+        t_mnt = t_mnt + dt
+    end if
+    call SetDynamicArrayValueThisIteration(12, t_mnt)
+    call SetDynamicArrayValueThisIteration(13, fq)
+    call SetDynamicArrayValueThisIteration(14, real(dfdt_sign, wp))
+
+    if ( abs(fq - fmax) < 0.001_wp .and. fmaxBoost ) then  ! Heat pump operates at boost frequency
+        t_boost = t_boost + dt  ! increment the boost frequency timer
+    else
+        t_boost = 0.0_wp  ! reset the timer
+    endif
+    call SetDynamicArrayValueThisIteration(7, real(t_boost, wp))
+end if
 
 call SetOutputValues()
 
