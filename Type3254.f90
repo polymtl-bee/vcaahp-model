@@ -210,10 +210,10 @@ psydat(2) = Tr
 psydat(4) = RHr/100.0_wp
 psydat(6) = wr
 if ( mode==0 .or. defrost_cooling ) then
-    call MoistAirProperties(thisUnit, thisType, 1, psymode, 1, psydat, 1, status)
+    call Psychro(thisUnit, thisType, 1, psymode, 1, psydat, 1, status)
     ! (unit, type, si units used, psych inputs, Twb computed, inputs, warning mgmt, warning occurences)
 else
-    call MoistAirProperties(thisUnit, thisType, 1, psymode, 0, psydat, 1, status)  ! Twb not computed
+    call Psychro(thisUnit, thisType, 1, psymode, 0, psydat, 1, status)  ! Twb not computed
 end if
 pr = psydat(1)
 Tr = psydat(2)
@@ -312,7 +312,7 @@ if (mDot /= 0.0_wp) then
             psydat(2) = Tr
             hx = hr - Qcl/mDot
             psydat(7) = hx  ! enthalpy of the state (Tr, ws)
-            call MoistAirProperties(thisUnit, thisType, 1, 5, 0, psydat, 1, status)  ! dry-bulb and enthalpy as inputs
+            call Psychro(thisUnit, thisType, 1, 5, 0, psydat, 1, status)  ! dry-bulb and enthalpy as inputs
             if (ErrorFound()) return
             ws = psydat(6)
         endif
@@ -328,7 +328,7 @@ endif
 psydat(1) = ps
 psydat(6) = ws
 psydat(7) = hs
-call MoistAirProperties(thisUnit, thisType, 1, 7, 0, psydat, 1, status)  ! humidity ratio and enthalpy as inputs
+call Psychro(thisUnit, thisType, 1, 7, 0, psydat, 1, status)  ! humidity ratio and enthalpy as inputs
 if (ErrorFound()) return
 ps = psydat(1)
 Ts = psydat(2)
@@ -801,6 +801,30 @@ return
         Qc = 0.0_wp
         Pel = 0.0_wp
     end subroutine ForceZeroPerformance
+    
+    
+    subroutine Psychro(thisUnit, thisType, iUnits, psymode, wbmode, psydat, eMode, stat)
+    ! Wrapper for the routine MoistAirProperties (see documentation for inputs/outputs).
+    ! If the moist air state is determined from the humidity ratio and enthalpy (i.e. psymode = 7),
+    ! Psychro checks that the state is not over the saturation curve, as that can cause the
+    ! MoistAirProperties to loop indefinitely. If it is, humidity ratio is reset to saturation
+    ! humidity ratio at the given value of enthalpy.
+        integer :: thisUnit, thisType, iUnits, psymode, wbmode, eMode, stat
+        real(wp) :: psydat(9), satdat(9), hsat
+        if (psymode == 7) then  ! Air state determined with humidity ratio (#6) and enthalpy (#7)
+            satdat = psydat
+            satdat(4) = 1.0_wp  ! Go to saturation curve following isenthalpic line (set RH=100%)
+            call MoistAirProperties(thisUnit, thisType, iUnits, 8, 0, satdat, eMode, status)
+            if (satdat(6) < psydat(6)) then  ! Over saturation curve
+                psydat = satdat  ! Keep saturated state with same enthalpy.
+            else
+                call MoistAirProperties(thisUnit, thisType, iUnits, psymode, wbmode, psydat, eMode, status)
+            end if
+        else
+            call MoistAirProperties(thisUnit, thisType, iUnits, psymode, wbmode, psydat, eMode, status)
+        end if
+    end subroutine Psychro
+    
         
     subroutine ExecuteFirstCallOfSimulation
   	    call SetNumberofParameters(13)
