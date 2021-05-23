@@ -104,7 +104,7 @@ real(wp) :: e, es, f, fp, fi  ! Controller signals
 real(wp) :: Tset_old, Tr_old, fi_old, es_old, e_old  ! Values of the previous timestep
 real(wp) :: mode_deadband, t_fm_min  ! Parameters
 real(wp) :: t_fm  ! time in fixed mode operation
-real(wp) :: fq_prev, t_mnt_min, t_mnt  ! time during wich the frequency must stay monotonic
+real(wp) :: fqLastTimestep, fqLastIteration, t_mnt_min, t_mnt  ! time during wich the frequency must stay monotonic
 integer :: dfdt_sign, dfdt_sign_prev  ! sign of the frequency derivative
 integer :: LUheat, LUcool, nIterMax  ! Parameters
 integer :: N, mode, prev_mode  ! Number of frequency levels, operating mode
@@ -112,7 +112,7 @@ integer :: Ni = 1, Ninstances = 1  ! temporary, should use a kernel function to 
 integer :: AFRlevel, old_AFRlevel, zone, old_zone, AFR2level, Toalevel
 real(wp) :: AFR, t_boost
 logical :: modulate, fmaxBoost
-integer :: defrost_mode
+integer :: defrost_mode, nIter
 real(wp) :: t_ld, t_uc, t_oc, Toa_av, Toa_av_prev, t_rec, recov_penalty
 
 
@@ -240,7 +240,8 @@ else
     ! Adjust the sign of the error depending on the operating mode
     e = (Tset - Tr) * (2.0_wp * real(mode, wp) - 1.0_wp)
     call RecallStoredPIvalues()
-    fq_prev = GetDynamicArrayValueLastTimestep(13)
+    fqLastTimestep = GetDynamicArrayValueLastTimestep(13)
+    fqLastIteration = GetOutputValue(1)
 
     if (modulate) then
         ! Default values for extra parameters
@@ -252,20 +253,25 @@ else
             fi = fi_old + Kc / ti * dt * (e + e_old) / 2  ! Update the integral (using trapezoidal integration).
         else
             fi = fi_old
-        endif
+        end if
         f = fp + fi  ! Unsaturated signal
         if ( tt > 0.0_wp .and. (f < fmin .or. f > fmax) ) then
-            es = f - min(fmax, max(fmin, f))  ! Error with saturated signal
+            es = f - min(fmax, TrimLow(f, fmin))  ! Error with saturated signal
             fi = fi - dt * (es + es_old) / 2 / tt  ! De-saturate integral signal
             f = fp + fi  ! Re-calculate the unsaturated signal
-        endif
-        if ( GetTimestepIteration() > nIterMax ) then
-            fq = fq_prev
-        else if ( f > fmin / 2.0_wp ) then
-            fsat = min(fmax, max(fmin, f))  ! Saturated signal
-            fq = (1.0_wp * floor(N * fsat)) / (1.0_wp * N)  ! Quantized signal
-        else
-            fq = 0.0_wp
+        end if
+        fsat = min(fmax, TrimLow(f, fmin))  ! Saturated signal
+        fq = (1.0_wp * floor(N * fsat)) / (1.0_wp * N)  ! Quantized signal
+        if ( GetTimestepIteration() > 0 ) then
+            if ( (fqLastIteration == 0.0_wp) .and. (fq > 0.0_wp) .or. &
+                 (fqLastIteration > 0.0_wp) .and. (fq == 0.0_wp) ) then
+                nIter = nIter + 1
+            end if
+            if (nIter > nIterMax) then
+                fq = fqLastIteration
+            else
+                nIter = 0
+            end if
         end if
     else
         fi = 0.0_wp
@@ -276,9 +282,9 @@ else
 
     t_mnt = GetDynamicArrayValueLastTimestep(12)
     dfdt_sign_prev = int(GetDynamicArrayValueLastTimestep(14))
-    if (fq > fq_prev) then  ! frequency is increasing
+    if (fq > fqLastTimestep) then  ! frequency is increasing
         dfdt_sign = 1
-    else if (fq < fq_prev) then  ! frequency is decreasing
+    else if (fq < fqLastTimestep) then  ! frequency is decreasing
         dfdt_sign = -1
     else
         dfdt_sign = dfdt_sign_prev
@@ -286,7 +292,7 @@ else
 
     if ( dfdt_sign * dfdt_sign_prev == -1 ) then  ! previous timestep was a local extremum
         if (t_mnt <= t_mnt_min) then
-            fq = fq_prev  ! keep the previous frequency value
+            fq = fqLastTimestep  ! keep the previous frequency value
             t_mnt = t_mnt + dt  ! increment monotonous frequency timer
             dfdt_sign = dfdt_sign_prev  ! keep the same direction of frequency evolution
         else
@@ -536,6 +542,8 @@ return
         real(wp) :: Tcutoff, t_cycle, t_h, t_df
         real(wp) :: a, b, c, d, m, p, Tmin, Tmax
         ! regression parameters
+        Tcutoff = s(Ni)%Tcutoff
+        t_df = s(Ni)%t_df / 60.0_wp
         a = s(Ni)%t_h(1) / 60.0_wp
         b = s(Ni)%t_h(2) / 60.0_wp
         c = s(Ni)%t_h(3)
@@ -544,7 +552,6 @@ return
         p = s(Ni)%t_rec(2) / 60.0_wp
         Tmin = s(Ni)%Tmin
         Tmax = -p / m  ! temperature at which t_rec becomes zero
-        t_df = s(Ni)%t_df / 60.0_wp
 
         call RecallStoredDefrostValues()
 
@@ -587,7 +594,15 @@ return
         end if
         call StoreDefrostValues()
     end subroutine SetDefrostMode
-
+    
+    
+    function TrimLow(f, fmin) result(ftrimmed)
+    ! Trim f to value fmin if fmin/2 < f < fmin, and to zero if f < fmin/2.
+        real(wp), intent(in) :: f, fmin
+        real(wp) :: ftrimmed
+        ftrimmed = merge(merge(0.0_wp, fmin, f < fmin/2.0_wp), f, f < fmin)
+    end function TrimLow
+    
 
     subroutine StorePIvalues
         call SetDynamicArrayValueThisIteration(1, e)
@@ -689,6 +704,7 @@ return
 
     subroutine ExecuteEndOfTimestep
         continue
+        nIter = 0
     end subroutine ExecuteEndOfTimestep
 
 
@@ -710,7 +726,8 @@ return
         onOff = GetInputValue(1)
         Tset = GetInputValue(2)
         AFR = GetInputValue(3)
-        Tr = nint(GetInputValue(4)*100.0_wp)/100.0_wp ! round to 0.2 °C to avoid oscillations
+        ! Tr = nint(GetInputValue(4)*100.0_wp)/100.0_wp ! round to 0.2 °C to avoid oscillations
+        Tr = GetInputValue(4)
         Toa = GetInputValue(5)
         fmin = GetInputValue(6)
         fmax = GetInputValue(7)

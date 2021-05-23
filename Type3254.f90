@@ -143,7 +143,7 @@ Character (len=maxMessageLength) aString, bString
 ! Performance map reading variables
 integer, parameter :: Nc = 5, Nh = 4  ! Number of interpolation variables
 integer, parameter :: Nmax = max(Nc, Nh)
-integer :: i, j, N, Noutc = 3, Nouth = 2, Nout
+integer :: i, j, N, Nd, Noutc = 3, Nouth = 2, Nout
 
 
 ! Interpolation variables
@@ -197,9 +197,11 @@ if (ErrorFound()) return
 defrost_cooling = (mode == 1) .and. (defrost_mode == 0)
 N = Nc * (1 - mode) + Nh * mode  ! Number of interpolation variables
 if ( mode == 0 .or. defrost_cooling ) then
-    Nout = Noutc  ! Number of output values for the interpolation.
+    Nout = Noutc  ! Number of output values for the interpolation
+    Nd = Nc  ! For allocations in defrost mode
 else
     Nout = Nouth
+    Nd = Nh
 end if
 
 ! Determine return air state
@@ -222,7 +224,7 @@ hr = psydat(7)
 dr = psydat(9)
 
 if (AFR >= 0.0_wp) then
-    mDot = AFR * AFRrated * dr  ! use normalized AFR as input if it is positive
+    mDot = AFR * AFRrated * dr  ! Use normalized AFR as input if it is positive
 else
     AFR = mDot / (dr * AFRrated)
 endif
@@ -255,8 +257,8 @@ if (freq > 0.0_wp) then
     if (shutdown) then
         call ForceZeroPerformance()
         call SetDynamicArrayValueThisIteration(1, GetDynamicArrayValueLastTimestep(1) + 1.0_wp)
-        fcomp = 0.0_wp  ! force shutdown -> set output frequency to zero
-        if ( (mode == 1) .and. (freq > 0.0_wp) ) then  ! only activate auxiliary when required by the controller
+        fcomp = 0.0_wp  ! Force shutdown -> set output frequency to zero
+        if ( (mode == 1) .and. (freq > 0.0_wp) ) then  ! Only activate auxiliary when required by the controller
             Qh = backupHeat
             Pel = backupHeat
         end if
@@ -464,8 +466,8 @@ return
     
     
     subroutine SkipLines(LUs, N)
-        integer, intent(in) :: LUs(:)
-        integer :: i, j, N
+        integer, intent(in) :: LUs(:), N
+        integer :: i, j
         do i = 1, size(LUs)
             do j = 1, N
                 read(LUs(i), *)
@@ -564,18 +566,18 @@ return
     !
     ! Output
     !   interpolation (real(wp) array) : results of the interpolation.
-        real(wp), intent(in) :: point(N)
-        real(wp) :: scaled_point(N), left, right, sp
+        real(wp), intent(in) :: point(Nd)
+        real(wp) :: scaled_point(Nd), left, right, sp
         real(wp), allocatable :: hypercube(:, :)
         integer, intent(in) :: mode
-        integer, dimension(N) :: idx, lb_idx, counter_int
+        integer, dimension(Nd) :: idx, lb_idx, counter_int
         integer :: i
-        logical :: counter_bool(N)
+        logical :: counter_bool(Nd)
         integer, intent(in) :: Nout
         real(wp) :: interpolation(Noutc + Nouth - 1)
         
         ! Map the point to the unit N-hypercube with the table values bounding the point
-        do i = 1, N
+        do i = 1, Nd
             ! Find the index of the lower bound for the ith component of point
             j = Findlb(s(Ni)%entries(:, i, mode), point(i), s(Ni)%extents(i, mode))
             lb_idx(i) = j
@@ -584,9 +586,9 @@ return
             ! Compute the scaled point, and keep it between 0 and 1
             scaled_point(i) = min(1.0_wp, max(0.0_wp, (point(i) - left) / (right - left)))
         end do
-        allocate(hypercube(Nout, 2**N))
+        allocate(hypercube(Nout, 2**Nd))
         counter_bool = .true.  ! All N values of the binary counter are initialized at 1
-        do i = 1, 2**N
+        do i = 1, 2**Nd
             call Increment(counter_bool)
             counter_int = merge(1, 0, counter_bool)  ! convert logical to int
             idx = lb_idx + counter_int  ! index of each of the 2**N vertices
@@ -594,9 +596,9 @@ return
         end do
                     
         ! Interpolate using the scaled point and the table values
-        do i = 1, N
+        do i = 1, Nd
             sp = scaled_point(i)
-            j = N - i
+            j = Nd - i
             hypercube(:, :2**j) = (1-sp) * hypercube(:, :2**j) &
                                     + sp * hypercube(:, 2**j+1:2**(j+1))
         end do
@@ -665,7 +667,7 @@ return
         real(wp) :: array((1-mode)*s(Ni)%PMClength + mode*s(Ni)%PMHlength)
         real(wp) :: value
         array_idx = idx(1)  ! begin with the leftmost index, since arrays are stored in column-major order
-        do i = 2, N
+        do i = 2, Nd
             array_idx = array_idx + product(s(Ni)%extents(1:i-1, mode)) * (idx(i) - 1)
         end do
         value = array(array_idx)
