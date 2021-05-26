@@ -813,7 +813,9 @@ return
         real(wp) :: psydat(9), satdat(9), hsat
         if (psymode == 7) then  ! Air state determined with humidity ratio (#6) and enthalpy (#7)
             satdat = psydat
-            satdat(4) = 1.0_wp  ! Go to saturation curve following isenthalpic line (set RH=100%)
+            ! Setting RH too close to 1 may cause convergence problems in MoistAirProperties,
+            ! e.g. when RH = 0.999 and h = 9.4303316807275.
+            satdat(4) = 0.99_wp  ! Go to saturation curve following isenthalpic line (set RH=100%)
             call MoistAirProperties(thisUnit, thisType, iUnits, 8, 0, satdat, eMode, status)
             if (satdat(6) < psydat(6)) then  ! Over saturation curve
                 psydat = satdat  ! Keep saturated state with same enthalpy.
