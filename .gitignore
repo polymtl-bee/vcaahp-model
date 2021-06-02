@@ -1,0 +1,6 @@
+# Ignore docs builds
+docs/_build
+docs/logo
+
+# Ignore texpad temp directory
+docs/**/.texpadtmp

@@ -1,0 +1,165 @@
+.. define non-breaking space by |_|
+.. |_| unicode:: 0xA0
+   :trim:
+
+Type 3223
+=========
+
+The Type 3223 controls the performance outputs of Type 3254 through four control
+signals:
+
+1. the normalized compressor frequency :math:`\nu`,
+2. the operating mode,
+3. the defrost mode,
+4. the indoor unit fan speed ratio.
+
+
+.. _inputs 3223:
+
+Inputs
+------
+
+**1. On / Off signal** : real
+   On / Off signal for the controller. Zero is interpreted as *Off*,
+   and all nonzero values are interpreted as *On*.
+
+**2. Temperature setpoint** : real
+   Setpoint for controlling the room temperature.
+
+**3. Fan speed setting** : integer :math:`\in \{0, 1, 2, 3\}`
+   Setting for the indoor unit fan speed:
+
+   .. table::
+      :align: left
+
+      ====  ==========
+      $1$   low
+      $2$   medium
+      $3$   high
+      ====  ==========
+
+   When this input is set to :math:`0`,
+   the controller determines the appropriate setting automatically.
+   A specific air flow rate can be assigned to each setting,
+   see :ref:`control file <control file>`.
+
+**4. Return temperature** : real
+   Temperature to be controlled (typically the indoor temperature).
+
+**5. Outdoor temperature** : real
+   The temperature of the outdoor air.
+
+**6. Minimum control signal** : real :math:`\geq 0`
+   The minimum value of te control signal under which
+   the controller will saturate (it should not be lower than zero).
+
+**7. Maximum control signal** : real :math:`\geq 0`
+   The maximum value of te control signal under which
+   the controller will saturate.
+
+**8. Operating mode** : integer :math:`\in \{-1, 0, 1\}`
+   .. table::
+      :align: left
+
+      ====  ==============================
+      $0$   always in cooling mode
+      $1$   always in heating mode
+      $-1$  automatic heating/cooling mode
+      ====  ==============================
+
+**9. Defrost mode override** : integer :math:`\in \{-1, 0, 1, 2\}`
+   Manual defrost mode setting:
+
+   .. table::
+      :align: left
+
+      ====  =============================
+      $0$   defrost mode (no heat output)
+      $1$   recovery mode
+      $2$   steady-state mode
+      ====  =============================
+
+   A value of :math:`-1` triggers automatic defrost cycles.
+
+**10. Frequency levels number** : integer :math:`> 0`
+   The number of values :math:`N` that the command signal can take between
+   its minimum and maximum values (inputs 4 and 5, respectively).
+   The command signal levels are evenly spaced,
+   i.e. the :math:`i^\text{th}` value is equal to
+   :math:`\frac{i}{N} (\nu_\text{max} - \nu_\text{min}) + \nu_\text{min}`.
+
+**11. PI gain** : real :math:`\geq 0`
+   Gain constant :math:`k_c` for the PI controller.
+   It affects both the proportional and integral parts.
+
+**12. Integral time constant** : real :math:`\geq 0`
+   Integral time constant :math:`\tau_i` of the controller.
+   The integral gain will be the PI gain divided by this value;
+   if :math:`k_c` is the PI gain, then the integral gain is
+   :math:`k_i = \frac{k_c}{\tau_i}`
+   High values of time integral time will thus result in low integral gains.
+   The only exception is when the integral time is set to zero,
+   which disables the integral action (i.e. sets the integral gain to zero).
+
+**13. Tracking time constant** : real :math:`\geq 0`
+   Tracking time constant :math:`\tau_t` for the anti-windup.
+   The tracking gain will be the PI gain divided by this value;
+   if :math:`k_c` is the PI gain, then the tracking gain is
+   :math:`k_t = \frac{k_c}{\tau_t}`
+   High values of time tracking time will thus result in low tracking gains.
+   The only exception is when the tracking time is set to zero,
+   which disables the tracking action (i.e. no anti-windup).
+
+**14. Proportional setpoint weight** : real :math:`\geq 0`
+   The weight of the setpoint in the proportional error.
+   A higher weight will result in a faster response to a setpoint change,
+   but it will also increase the overshoot.
+
+
+Parameters
+----------
+
+**1. Operating mode deadband** : real :math:`\geq 0`
+   Value of the deadband to prevent oscillations of the operating mode
+   (when automatic selection is enabled).
+
+**2. Minimum fixed operating mode duration** : real :math:`\geq 0`
+   After changing the operating mode, the controller cannot change it back
+   after a duration specified by this parameter; this is to prevent switching
+   back and forth too quickly.
+   To disable this feature, set the duration to zero.
+
+**3. Maximum number of iterations** : integer :math:`> 0`
+   It may happen that the compressor frequency oscillates between two values
+   and therefore prevents convergence. In that case, it will stick to its last
+   value after a certain number of iterations specified by this parameter.
+
+**4. Logical Unit — cooling mode** : integer
+   The Logical Unit used to read the cooling :ref:`control file <control file>`.
+
+**5. Logical Unit — heating mode** : integer
+   The Logical Unit used to read the heating :ref:`control file <control file>`.
+
+
+Outputs
+-------
+
+**1. Normalized compressor frequency** : real :math:`\geq 0`
+   The value of the compressor frequency computed by the controller to
+   reach the setpoint. When it is not zero, it is restricted to the interval
+   :math:`[\nu_\text{min}, \nu_\text{max}]`
+   (see :ref:`inputs 6 and 7 <inputs 3223>`).
+
+**2. Fan speed ratio** : real :math:`\geq 0`
+   The fan speed ratio associated with the specified fan speed setting
+   (see :ref:`input 3 <inputs 3223>`).
+
+**3. Operating mode** : integer :math:`\in \{0, 1\}`
+   If the :ref:`input 8 <inputs 3223>` is set to :math:`0` or :math:`1`,
+   the same value is provided as output. If it is set to :math:`-1`,
+   the operating mode is selected automatically from the room temperature error.
+
+**4. Defrost mode** : integer :math:`\in \{1, 2, 3\}`
+   If the :ref:`input 9 <inputs 3223>` is set to $1$, $2$ or $3$,
+   the same value is provided as output. If it is set to :math:`0`,
+   the defrost mode is selected automatically from the outdoor temperature.
