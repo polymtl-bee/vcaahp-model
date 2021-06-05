@@ -1,4 +1,4 @@
-Integrate variable capacity air-to-air heat pumps in TRNSYS
+Model variable capacity air-to-air heat pumps in TRNSYS
 ===========================================================
 
 The TRNSYS Types 3254 and 3223 presented here aim to model single zone,

@@ -1,0 +1,42 @@
+\documentclass{standalone}
+
+\input{preamble}
+
+
+\begin{document}
+
+\begin{pic}
+
+\def\squeez{0.8}
+\def\amp{1.5}
+
+% plot
+\draw [very thick, shorten >=-.33pt] (-1,0) -- (0,0);
+\draw [very thick, shorten <=-.33pt]
+	plot[domain=0:1/\squeez] (\x, {\amp*(2*\squeez*\x - (\squeez*\x)^2)});
+\draw [very thick] (1/\squeez,\amp) -- ++(1,0) coordinate (ss);
+
+% x-axis
+\begin{scope}[shift={(0, -\as)}]
+
+\draw [gray, thick] (-1,\tl)
+	|- node [below, pos=.75] {$\tau_\text{df}$} (0,0)
+	-- node [below] {$\tau_\text{rec}$} (1/\squeez,0)
+	-| node [below, pos=.25] {$\tau_\text{ss}$} ++(1,\tl);
+
+\draw [gray, thick] % middle ticks
+	(0,0) -- +(0, \tl)
+	(1/\squeez,0) -- +(0, \tl);
+
+\end{scope}
+
+% y-axis
+\draw [gray, thick] (ss)++(\as, 0) -|
+	node (ssc) [right, align=left, yshift=-0.5\baselineskip]
+		{steady-state\\capacity}
+	++(\tl, -\amp) node [right] {0} -- ++(-\tl, 0);
+
+
+\end{pic}
+
+\end{document}

@@ -14,6 +14,8 @@ and to simulate defrost cycles.
 For more details, have a look at the in-depth features section.
 
 
+.. _inputs 3254:
+
 Inputs
 ------
 
@@ -90,8 +92,8 @@ Inputs
       ====  ========================
 
 **14. Recovery penalty** : real :math:`\in [0, 1]`
-   Correction factor for the heating capacity
-   when the heat pump operates in recovery mode.
+   Correction factor for the heating capacity when the heat pump
+   operates in recovery mode. See :ref:`recovery penalty <recovery penalty>`.
 
 
 .. _params 3254:
@@ -249,3 +251,9 @@ Outputs
    Returns :math:`0` if the heat pump works noramlly,
    and |_| :math:`1` if it is shutdown because of
    an invalid set of input conditions.
+
+
+.. _performance file:
+
+Performance file
+----------------

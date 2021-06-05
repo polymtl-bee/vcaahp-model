@@ -1,0 +1,65 @@
+\documentclass{standalone}
+
+\input{preamble}
+
+\usetikzlibrary{arrows.meta, decorations.markings}
+
+\tikzset{
+	midarrow/.style={
+		very thick,
+		postaction=decorate,
+		decoration={
+			markings,
+			mark=at position .7 with {\arrow{Latex[length=3mm]}}}}}
+
+
+\begin{document}
+
+\begin{pic}
+
+\draw [very thick, line cap=rect]
+	(-.5,.5) -- (1,.5)
+	(0,1.5) -- (5.5,1.5)
+	(4.5,2.5) -- (6,2.5);
+
+\foreach \x/\y in {0/0, 4.5/1}{
+	\draw [midarrow, very thick] (\x, \y+1.5) -- (\x, \y+.5);
+	\draw [midarrow, very thick] (\x+1, \y+.5) -- (\x+1, \y+1.5);
+}
+
+\draw [gray, thick, every node/.style={anchor=base, yshift=-4mm}]
+	(0,0) |- node (T10) {10} (5.5,-.15)
+		node {\phantom{\,\si{\celsius}}\SI{21}{\celsius}} -- (5.5,0)
+	(1,0) -- (1,-.15) node {12}
+	(4.5,0) -- (4.5,-.15) node {19};
+
+\draw [gray, thick, every node/.style={right}]
+	(6.35,2.5) -| node (A) {$A$} (6.5,0.5) node (C) {$C$} -- (6.35,0.5)
+	(6.35,1.5) -- (6.5,1.5) node (B) {$B$};
+
+\node [anchor=base east, gray] at (T10.base west) {$T_o$};
+
+\foreach \x/\speed in {8/high, 9.5/med, 11/low}{
+	\node [anchor=base] at (\x,3.5) {\speed};}
+
+\begin{scope}[inner sep=0pt]
+\foreach \x/\f in {8/1.334, 9.5/0.789, 11/0.649}{\node at (\x,2.5) {\f};}
+\foreach \x/\f in {8/0.755, 9.5/0.614, 11/0.456}{\node at (\x,1.5) {\f};}
+\foreach \x/\f/\fl in {8/0.895/fh, 9.5/0.649/, 11/0.543/fl}{
+	\node (\fl) at (\x, 0.5) {\f};
+}
+\end{scope}
+
+\coordinate (N1) at (6,2.5);
+\coordinate (N2) at (9.5,3.5);
+\node [gray, anchor=base east] (Z) at (N1 |- N2) {temperature zones};
+\draw [gray, semithick] (A)++(0,.5) |- (Z.mid east);
+
+\node (fb) [anchor=base] at (T10.base -| N2) {boost frequencies};
+\coordinate [yshift=3mm] (B1) at (fb.mid -| fh.west);
+\coordinate [yshift=3mm] (B2) at (fb.mid -| fl.east);
+\draw [semithick] (B1) |- (fb) (fb) -| (B2);
+
+\end{pic}
+
+\end{document}

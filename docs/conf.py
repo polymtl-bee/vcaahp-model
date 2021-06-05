@@ -30,7 +30,12 @@ release = '0.1.0'
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
-extensions = ['sphinx_math_dollar', 'sphinx.ext.mathjax']
+extensions = [
+    'sphinx_math_dollar',
+    'sphinx.ext.mathjax',
+    'cloud_sptheme.ext.table_styling'
+]
+
 mathjax_config = {
     'tex2jax': {
         'inlineMath': [ ["\\(","\\)"] ],
@@ -56,7 +61,7 @@ html_theme_options = {
     'github_button': True,
     'github_user': "polymtl-bee",
     'github_repo': "vcaahp-model",
-    'description': "Integrate VCAAHPs in TRNSYS"
+    'description': "Model VCAAHPs in TRNSYS"
 }
 
 # Add any paths that contain custom static files (such as style sheets) here,

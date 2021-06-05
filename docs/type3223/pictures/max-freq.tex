@@ -1,0 +1,43 @@
+\documentclass{standalone}
+
+\input{preamble}
+
+\usepackage{pgfplots}
+
+
+\begin{document}
+
+\begin{pic}
+
+\begin{axis}[
+	separate axis lines,
+    enlargelimits=false,
+    axis x line*=bottom,
+    axis x line shift=5mm,
+    axis y line shift=5mm,
+    axis y line*=left,
+    ticklabel style={color=gray},
+    axis line style={gray, thick},
+    major tick style={gray, thick},
+    major tick length=1.5mm,
+%    ticklabel style={font=\footnotesize},
+    clip=false,
+    height=44mm,
+    width=6cm,
+    xtick={0, 30, 70},
+    xticklabels={0, 30, \phantom{min\,}\SI{70}{min}},
+    ymin=0, ymax=1.2,
+    ytick={0, 1, 1.2},
+%    yticklabels={0, 64, \SI{76}{\hertz}},
+%    axis y line*=right,
+%    yticklabel style={name=yticklabel\ticknum}
+   ]
+
+\addplot [very thick, smooth] table {max-freq.csv}
+	node [right] {$\nu (t)$};
+
+\end{axis}
+
+\end{pic}
+
+\end{document}

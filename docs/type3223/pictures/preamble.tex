@@ -1,0 +1,42 @@
+\usepackage{fontspec}
+
+\usepackage{amsmath}
+\usepackage[math-style=ISO]{unicode-math}
+\usepackage{microtype}
+
+\defaultfontfeatures{ Scale=MatchLowercase }
+\setmainfont{Georgia}[Scale = 1.0]
+\setmathfont{Asana Math}
+\setmathfont[
+	range={up,`∏,`∑,`∙,`√,`∞}, script-features={}, sscript-features={}
+]{Georgia}
+\setmathfont[range=it,
+             script-features={}, sscript-features={}
+            ]{Georgia Italic}
+\setmathfont[range=bfup,
+             script-features={}, sscript-features={}
+            ]{Georgia Bold}
+\setmathfont[range=bfit,
+             script-features={}, sscript-features={}
+            ]{Georgia Bold Italic}
+
+\usepackage{adjustbox, siunitx, tikz}
+
+\newenvironment{pic}[1][]{
+	\begin{adjustbox}{scale=1.7}
+	\begin{tikzpicture}[#1]
+}{
+	\end{tikzpicture}
+	\end{adjustbox}
+}
+
+
+\tikzstyle{dot} = [circle, fill, scale=.3]
+
+% Lengths
+\newlength\tl
+\newlength\as
+\newlength\astl
+\setlength\tl{1.5mm}	% tick length
+\setlength\as{5mm}		% axis shift
+\setlength\astl{\dimexpr \as - \tl \relax}

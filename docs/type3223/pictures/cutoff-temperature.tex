@@ -1,0 +1,35 @@
+\documentclass{standalone}
+
+\input{preamble}
+
+\usetikzlibrary{decorations.pathmorphing}
+
+
+\begin{document}
+
+\begin{pic}
+
+\draw [
+	very thick, gray, rounded corners=2pt,
+	decoration={random steps, segment length=2mm, amplitude=2pt}, decorate
+]	(0,0) node (A) {}
+	to [out=10, in=225] (3, 2) node (B) [dot, black] {}
+	to [out=45, in=190] (10,5) node (C) {} node [right] {$ T_o(t) $};
+
+\draw [latex-latex, thick]
+	(A |- B) -- node [fill=white] {$ \tau_\text{uc} $} (B);
+
+\draw [latex-latex, thick]
+	(A -| B) -- node [fill=white] {$ \tau_\text{oc} $} (A -| C);
+
+\draw [semithick] (B)++(.2,0) -- ++(1.5,0) node [right] {$ T_c $};
+
+\draw
+	(A) -- (A |- B)
+	(B)++(0,-.15) -- (A -| B)
+	(C) -- (A -| C);
+
+
+\end{pic}
+
+\end{document}

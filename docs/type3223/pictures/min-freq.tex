@@ -1,0 +1,29 @@
+\documentclass{standalone}
+
+\input{preamble}
+
+
+\begin{document}
+
+\begin{pic}[thick]
+
+\draw [very thick] (-.5,3.7) -| (0,1.66) -| (1,.7) -| (4,1.3) -- (4.5,1.3);
+
+\draw [gray, every node/.style={anchor=base, yshift=-4mm}]
+	(0,.2) |- node {10} (2.3,.05) -- ++(.1,.15) -- ++(.2,-.3) -- ++(.1,.15)
+		-| node (To) {\phantom{\,\si{\celsius}}\SI{40}{\celsius}} (4,.2)
+	(1,.2) -- (1,.05) node {14};
+
+\node [gray, anchor=base west, xshift=5pt] at (To.base east) {$T_o$};
+
+\draw [gray]
+	(-1,3.7) -| node (f1) [left] {0.614} (-1.15,0.7) node [left] {0.175}
+		-- (-1,0.7)
+	(-1,1.3) -- (-1.15,1.3) node [left] {0.263}
+	(-1,1.66) -- (-1.15,1.66) node [left] {0.316};
+
+\node [gray, anchor=east, yshift=15pt] at (f1.east) {$\nu_0$};
+	
+\end{pic}
+
+\end{document}

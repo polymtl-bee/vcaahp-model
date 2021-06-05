@@ -1,0 +1,65 @@
+\documentclass{standalone}
+
+\input{preamble}
+
+\usetikzlibrary{arrows.meta, decorations.markings, positioning}
+
+\tikzset{
+	midarrow/.style={
+		very thick,
+		postaction=decorate,
+		decoration={
+			markings,
+			mark=at position .87 with {\arrow{Latex[length=3mm]}}}}}
+
+\definecolor{cool}{RGB}{0, 170, 204}
+
+
+\begin{document}
+
+\begin{pic}
+
+\draw [midarrow] (-0.5,2) -| (1,1);
+\draw [midarrow] (1.5,1)  -| (0,2);
+\draw [midarrow] (1.5, 1) -| (3,0);
+\draw [midarrow] (3.5,0)  -| (2,1);
+
+\draw [very thick] (3.5,0) -- (7.5,0);
+
+
+\begin{scope}[yscale=-1, shift={(7,-2)}]
+
+\draw [midarrow] (-0.5,2) -| (1,1);
+\draw [midarrow] (1.5,1)  -| (0,2);
+\draw [midarrow] (1.5, 1) -| (3,0);
+\draw [midarrow] (3.5,0)  -| (2,1);
+
+\end{scope}
+
+
+\draw [gray, thick, every node/.style={yshift=-4mm}]
+	(0, -.3) -- (0,-.45) node {\num{-2.5}\phantom{$-$}}
+		-| node (E) {\phantom{\,\si{\celsius}}\SI{2.5}{\celsius}} (10,-.3)
+	(1,-.3) -- (1,-.45) node {\num{-2}\phantom{$-$}}
+	(2,-.3) -- (2,-.45) node {\num{-1.5}\phantom{$-$}}
+	(3,-.3) -- (3,-.45) node {\num{-1}\phantom{$-$}}
+	(5,-.3) -- (5,-.45) node {0}
+	(7,-.3) -- (7,-.45) node {1}
+	(8,-.3) -- (8,-.45) node {1.5}
+	(9,-.3) -- (9,-.45) node {2};
+
+\node [right=1cm of E.base, anchor=base, gray] {$ e $};
+
+\draw [gray, thick]
+	(-.85,2) -| node [mid left] {high} (-1,0) node [mid left] {low}
+		-- (-.85,0)
+	(-.85,1) -- (-1,1) node [mid left] {med};
+
+\node [rectangle, fill=cool!30, minimum width=49mm, inner sep=5pt]
+	at (2.5,-1.7) {cooling mode ($e < \SI{0}{\celsius}$)};
+\node [rectangle, fill=red!30, minimum width=49mm, inner sep=5pt]
+	at (7.5,-1.7) {heating mode ($e > \SI{0}{\celsius}$)};
+
+\end{pic}
+
+\end{document}

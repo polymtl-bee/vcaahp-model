@@ -41,7 +41,7 @@ Inputs
    When this input is set to :math:`0`,
    the controller determines the appropriate setting automatically.
    A specific air flow rate can be assigned to each setting,
-   see :ref:`control file <control file>`.
+   see `control file`_.
 
 **4. Return temperature** : real
    Temperature to be controlled (typically the indoor temperature).
@@ -135,11 +135,13 @@ Parameters
    value after a certain number of iterations specified by this parameter.
 
 **4. Logical Unit — cooling mode** : integer
-   The Logical Unit used to read the cooling :ref:`control file <control file>`.
+   The Logical Unit used to read the `cooling control file`_.
 
 **5. Logical Unit — heating mode** : integer
-   The Logical Unit used to read the heating :ref:`control file <control file>`.
+   The Logical Unit used to read the `heating control file`_.
 
+
+.. _outputs 3223:
 
 Outputs
 -------
@@ -163,3 +165,429 @@ Outputs
    If the :ref:`input 9 <inputs 3223>` is set to $1$, $2$ or $3$,
    the same value is provided as output. If it is set to :math:`0`,
    the defrost mode is selected automatically from the outdoor temperature.
+
+**5. Recovery penalty** : real :math:`\in [0, 1]`
+   Correction factor for the heating capacity when the heat pump
+   operates in recovery mode. See `recovery penalty`_.
+
+
+.. _control file:
+
+Control file
+------------
+
+The control file contains more advanced parameters for the Type |_| 3223.
+Those parameters include tables, which can be cumbersome to enter in the
+simulation studio, and are more easily entered in a separate file.
+Two control file examples (for cooling and heating operation) are shown below,
+along with short explanations for each parameter described in the files.
+
+
+Cooling control file
+~~~~~~~~~~~~~~~~~~~~
+
+.. _cooling control file:
+
+.. code-block::
+   :linenos:
+   :caption: Example of cooling control file.
+   :emphasize-lines: 7, 10, 16, 21, 22, 29, 30, 34, 36, 43, 44, 46, 48, 49, 50
+
+   !# Control file for cooling mode operation of Type 3223.
+   !#
+   !# Control operating range
+   !#	The error signal is defined as Tset - Tr.
+   !#	Minimum error value under which the frequency is maximum,
+   !#	in degree celsius.
+   	-2
+   !#	Maximum error value over which the frequency is zero,
+   !#	in degree celsius.
+   	2.5
+   !#
+   !# Air flow rate control
+   !#	Number of air flow rates
+   	3
+   !#	Normalized air flow rate values
+   	1	0.827	0.608
+   !#	Error values and deadband values (in degree celsius)
+   !#	Note:	the number of lines must be equal to the number
+   !#		of air flow rates minus one.
+   !#	Error	deadband
+   	-2.25	0.5
+   	-1.25	0.5
+   !#
+   !# Minimum frequency
+   !#	Number of outdoor temperature (To) values
+   	3
+   !#	To values
+   !#	Lower normalized frequency limit values
+   		10		14		40
+   	0.614		0.316		0.175		0.263
+   !#
+   !# Boost frequency
+   !# Boost frequency maximum duration (hours), scaling factor
+   	0.5	0.8421
+   !#	Number of outdoor temperature zones, number of air flow rates
+         2  3
+   !#	Oudtoor temperature values and deadband values (in degree celsius)
+   !#	Note:	the value of To + db/2 of a line should be smaller
+   !#		than the value of To - db/2 of the next line.
+   !#		The number of lines must be equal to the number of
+   !#		outdoor temperature zones minus one.
+   !#	To	db
+   	11	2
+   	20	2
+   !# Normalized air flow rates values
+      0.608	0.827	1
+   !# Normalized boost frequency values
+      0.543	0.649	0.895
+      0.456	0.614	0.755
+      0.649	0.789	1.334
+
+
+Lines 7 and 10: control operating range
+   Those values define the room temperature error range
+   :math:`[e_\text{min}, e_\text{max}]` over which the frequency is modulated.
+   See `control operating range`_ for more details.
+
+Line 16: air flow rate values
+   The indoor unit volume air flow rate values corresponding to each level
+   (low / medium / high, see :ref:`input 3 <inputs 3223>`),
+   normalized by the rated air flow rate
+   (:ref:`parameter 9 <params 3254>` of Type 3254).
+   It should be in increasing order for heating mode control files,
+   and in decreasing order for cooling mode control files.
+
+Lines 21–22: parameters for the error deadbands
+   Fan speed level control relies on deadbands to prevent oscillating between
+   two levels.
+   (See :ref:`fan speed level control <fan speed control>` for more details.)
+   With :math:`n` different levels, there should be :math:`n - 1` deadbands.
+   In this case, :math:`n = 3` so there are two deadbands.
+   Each deadband is defined by its center (first column) and its width
+   (second column). Each row thus corresponds to a different deadband,
+   and rows should be ordered so that the first column is in increasing order
+   (lowest value at the top, and highest value at the bottom).
+
+Lines 29–30: compressor frequency lower limit
+   The lower limit of the compressor frequency :math:`\nu_0` can depend on the
+   outdoor temperature :math:`T_o`. Different values of :math:`\nu_0` can be
+   assigned to specific temperature ranges. The first line represents the limits
+   of each temperature interval (it should be ordered in increasing order).
+   The second line specifies the value of :math:`\nu_0` in each interval.
+   The dependency provided in the example could be represented as follow:
+
+.. _minimum frequency:
+
+   .. image:: pictures/min-freq.pdf
+      :align: center
+
+Line 34: boost frequency settings
+   The maximum duration of operation at `boost frequency`_
+   and the scaling factor.
+
+Lines 36, 43–44, 46, 48–50: boost frequency values
+   To avoid oscillations between two boost frequency values, deadbands are used
+   to model the outdoor tempertature dependency (see `boost frequency`_).
+   Assuming there are :math:`n` temperature zones, there should be :math:`n - 1`
+   deadbands. In this example :math:`n = 3` (see line 36), so there are two
+   deadbands, corresponding to the lines 43 and 44. Each line specify the center
+   then the width of the deadband.
+   The lines should be ordered so that the centers are in increasing order
+   (the smallest at the top), and different deadbands should not overlap.
+
+   Since the boost frequency values also depend on the indoor air flow rate,
+   the normalized air flow rate value are also specified (in increasing order,
+   see line 46).
+   Finally, the boost frequency values are given as a table, whose columns
+   correspond to the air flow rate levels given above.
+   Thus if there are :math:`m` flow rate levels,
+   the dimensions of the table are :math:`n \times m`.
+
+
+Heating control file
+~~~~~~~~~~~~~~~~~~~~
+
+.. _heating control file:
+
+.. code-block::
+   :linenos:
+   :caption: Example of heating control file.
+   :emphasize-lines: 7, 10, 16, 21, 22, 29, 30, 33, 44, 47, 51
+
+   !# Control file for heating mode operation of Type 3223.
+   !#
+   !# Control operating range
+   !#	The error signal is defined as Tset - Tr.
+   !#	Minimum error value under which the frequency is zero,
+   !#	in degree celsius.
+   	-2.5
+   !#	Maximum error value over which the frequency is maximum,
+   !#	in degree celsius.
+   	3
+   !#
+   !# Air flow rate control
+   !#	Number of air flow rates
+   	3
+   !#	Normalized air flow rate values
+   	0.608	0.827	1
+   !#	Error values and deadband values (in degree celsius)
+   !#	Note:	the number of lines must be equal to the number
+   !#		of air flow rate minus one.
+   !#	Error	deadband
+   	1.25	0.5
+   	2.25	0.5
+   !#
+   !# Minimum frequency
+   !#	Number of outdoor temperature (To) values
+   	4
+   !#	To values
+   !#	Lower normalized frequency limit values
+   		-5		3		7		18
+   	0.5833		0.4833		0.3		0.1667		0.2667
+   !#
+   !# Maximum frequency
+      1.9833
+   !#
+   !# Defrost cycles parameters
+   !#	Tcutoff: defrost cutoff temperature (in degree celsius)
+   !#	t_df: the defrost duration, during which the heat pump
+            operates in cooling (in minutes)
+   !#	t_h:  duration of heating mode operation in a cycle
+   !#	t_rec: duration of the transient (recovery) period
+   !#	Tmin: temperature under which a constant t_rec is used
+            instead of the linear dependance
+   !#	Tcutoff	t_df
+   	6	5
+   !#	t_h parameters: a + b * exp(c * (Tout+d)) (in minutes)
+   !#	a	b	c	d
+   	37.39	16.64	0.235	-2.118
+   !#	t_rec parameters: m * Tout + p for Tout > Tmin
+         (in minutes and degree celsius)
+   !#	m	p	Tmin
+   	-0.931	10.798	-28
+
+.. note::
+   Up to the line 30, the heating and cooling control files describe the same
+   parameters—although sometimes with different values.
+   Those parameters aren't described here, to avoid redundancy.
+
+Line 33: maximum frequency
+   The maximum frequency of the compressor, normalized by the rated frequency.
+   There is no "boost" frequency in heating mode, since outdoor temperature is
+   low and compressor overheating is not a concern.
+
+Line 44: cutoff temperature :math:`T_c` and defrost duration $\tau_\text{df}$
+   The cutoff temperature is the outdoor temperature limit above which
+   no defrost is needed (see `defrost cycles`_). The defrost duration is the
+   time during which the heat pump works in cooling mode to remove the frost
+   that formed on the outdoor unit exchanger.
+
+Line 47: parameters for the heating operation duration :math:`\tau_\text{h}`
+   Heating operation duration is the time during which the heat pump is not
+   operating in defrost mode, i.e. the recovery and steady-state periods.
+
+Line 51: parameters for the recovery period duration :math:`\tau_\text{rec}`
+   When finishing a defrost operation, the heat pump goes through a recovery
+   phase before reaching the steady-state.
+   During the recovery period, the capacity of the heat pump is affected,
+   but it recovers gradually over the period.
+
+In-depth features
+-----------------
+
+.. _control operating range:
+
+Control operating range
+~~~~~~~~~~~~~~~~~~~~~~~
+
+The frequency is modulated using a PI (proportional-integral) controller when
+the temperature error signal :math:`e = T_r - T_\text{set}` is within a certain
+range :math:`[e_\text{min}, e_\text{max}]`
+(:math:`T_r` is the :ref:`input 4 <inputs 3223>`
+and :math:`T_\text{set}` the :ref:`input 2 <inputs 3223>`).
+When :math:`e \notin [e_\text{min}, e_\text{max}]`, the frequency :math:`\nu` is
+either set to zero or to its maximal value :math:`\nu_\text{max}`, depending on
+the operating mode.
+
+.. table::
+   :column-alignment: left center center
+   :header-alignment: left center center
+   :widths: 1 1 1
+
+   =========  ==============================  ==============================
+      mode    :math:`\pmb{e < e_\text{min}}`  :math:`\pmb{e > e_\text{max}}`
+   =========  ==============================  ==============================
+    heating             :math:`0`                 :math:`\nu_\text{max}`
+    cooling       :math:`\nu_\text{max}`                :math:`0`
+   =========  ==============================  ==============================
+
+The value of :math:`e_\text{min}` and :math:`e_\text{max}` also depend on the
+operating mode. In the example control files, these values are the following:
+
+.. table::
+   :column-alignment: left center center
+   :header-alignment: left center center
+   :widths: 1 1 1
+
+   =========  ==========================  ==========================
+      mode    :math:`\pmb{e_\text{min}}`  :math:`\pmb{e_\text{max}}`
+   =========  ==========================  ==========================
+    heating            −2.5 °C                      3 °C
+    cooling             −2 °C                      2.5 °C
+   =========  ==========================  ==========================
+
+
+.. _fan speed control:
+
+Fan speed level control
+~~~~~~~~~~~~~~~~~~~~~~~
+
+The fan speed level is selected automatically from the value
+of the temperature error :math:`e = T_r - T_\text{set}`, unless it is set
+explicitly (see :ref:`input 3 <inputs 3223>`).
+To prevent oscillations between two fan speeds, deadbands are used to manage the
+transition between modes. For example, in the figure below, the fan speed goes
+from low to medium when the error drops below −1.5 °C, but in order to return to
+the low speed level, the error must exceeds −1 °C.
+
+.. figure:: pictures/fan-deadbands.pdf
+
+   Illustration of the deadbands defined in the
+   :ref:`example control files <control file>`.
+
+Each speed level is associated with an air flow rate value,
+specified in the control file (line 16 in the examples).
+
+
+.. _boost frequency:
+
+Boost frequency
+~~~~~~~~~~~~~~~
+
+In cooling mode, high outdoor temperatures may cause overheat if the compressor
+is running at full speed for too long.
+The maximum compressor frequency is therefore limited to a safe value.
+However, when starting up the compressor can sometimes run temporarily at a
+higher frequency, called the *boost frequency*, to reach the setpoint faster.
+
+.. figure:: pictures/max-freq.pdf
+   :figwidth: 158mm
+
+   At full regime, the compressor operates about 20 % faster than its "safe"
+   maximum speed for 30 minutes, then lowers its speed to avoid overheating.
+
+This behaviour can be reproduced by the Type |_| 3223, using two parameters:
+the duration of the boost frequency operation and the ratio between the maximum
+frequency and the boost frequency (aka the *scaling factor*).
+In the example above, the duration would be half an hour, and the scaling factor
+would be :math:`\frac{1}{1.2} \approx 0.833`.
+Check out line 34 of the :ref:`example control file <cooling control file>`
+to see how to specify these parameters.
+
+The value of the boost frequency (1.2 in the example above) should also be
+specified. However, this value may depend on the outdoor temperature :math:`T_o`
+and the indoor unit fan speed.
+The latter is divided into :ref:`fan speed levels <fan speed control>`,
+and each level is associated with a set of boost frequency values.
+The dependency with :math:`T_o` is modelled using temperature intervals,
+the same approach as for the `minimum frequency`_ but with deadbands to avoid
+oscillations between two different compressor speeds.
+Each interval defines a *temperature zone*, which is also associated
+with a set of boost frequency values.
+
+.. figure:: pictures/boost-freq.pdf
+   :figwidth: 164mm
+
+   The boost frequency value depends on the outdoor temperature zone
+   and on the :ref:`fan speed level <fan speed control>`.
+
+To correctly specify the boost frequency values, three things are needed:
+
+   - The deadbands that allow to determine the temperature zones
+     (each deadband is defined by its center and its width).
+   - The normalized air flow rate corresponding to each fan speed level.
+   - The table with the boost frequency values.
+
+Check the end of the :ref:`example control file <cooling control file>` to see
+how to include them.
+
+
+.. _defrost cycles:
+
+Defrost cycles
+~~~~~~~~~~~~~~
+
+Each defrost cycle is divided into three phases:
+
+1. The defrost operation, where the heat pump operates in cooling mode
+   to bring heat in the outdoor unit.
+2. The recovery phase, where the capacity increases gradually towards its
+   steady-state value, as it is affected by transient processes.
+3. The steady-state phase, where the heat pump operates normally.
+
+Each phase has a certain duration, noted respectively :math:`\tau_\text{df}`,
+:math:`\tau_\text{rec}` and :math:`\tau_\text{ss}`.
+The duration of the whole heating operation period
+(:math:`\tau_\text{rec} + \tau_\text{ss}`) is noted :math:`\tau_\text{h}`.
+
+.. figure:: pictures/defrost-cycle.pdf
+
+
+Duration of each phase
+......................
+
+The duration :math:`\tau_\text{df}` is constant
+(line 44 of the `heating control file`_), but :math:`\tau_\text{rec}` and
+:math:`\tau_\text{ss}` vary with the outdoor temperature. The dependency is
+specified through two regressions of the outdoor temperature, one for
+:math:`\tau_\text{rec}` and one for :math:`\tau_\text{h}`
+(from which one can deduce :math:`\tau_\text{ss}`).
+
+.. math::
+   \frac{\tau_\text{rec}}{\text{min}} = \left\{
+	\begin{array}{lr}
+    	p + m\,\dfrac{T_o}{\text{°C}} & \text{if } T_o \geq T_\text{min} \\
+    	37 & \text{if } T_o < T_\text{min}
+	\end{array}
+   \right.
+
+.. math::
+   \frac{\tau_\text{h}}{\text{min}} = a + b\,
+   \exp\left[c\left(\frac{T_o}{\text{°C}} + d\right)\right]
+
+The parameters $a$, $b$, $c$, $d$, $p$, $m$ and $T_\text{min}$ must be
+provided at the end of the `heating control file`_.
+
+
+Cutoff temperature
+..................
+
+Since defrost is only necessary below a certain temperature level,
+defrost cycles are `not` triggered whenever the :math:`T_o` is above a
+*cutoff temperature* :math:`T_c` for a certain period.
+Specifically, cycles are not triggered if the the time :math:`\tau_\text{oc}`
+during which :math:`T_o > T_c` is bigger than the time :math:`\tau_\text{uc}`
+during which :math:`T_o < T_c`.
+
+.. figure:: pictures/cutoff-temperature.pdf
+   :figwidth: 155mm
+
+   Illustration of the cutoff temperature. In this case,
+   :math:`\tau_\text{oc} > \tau_\text{uc}` so there would be no defrost cycles.
+
+The cutoff temperature must be provided in the control file;
+see line 44 of the example `heating control file`_.
+
+
+.. _recovery penalty:
+
+Recovery penalty
+................
+
+To quantify how the heating capacity is affected by transient processes in the
+recovery phase, the Type |_| 3223 computes a correction factor—called the
+*recovery penalty*—to apply to the steady-state capacity value.
+Since the Type |_| 3254 is in charge of finding this capacity value, the
+Type |_| 3223 :ref:`outputs the recovery penalty <outputs 3223>` so that it can
+be provided to the Type |_| 3254 (:ref:`input 14 <inputs 3254>`).
