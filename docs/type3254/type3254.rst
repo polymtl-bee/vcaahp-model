@@ -257,3 +257,183 @@ Outputs
 
 Performance file
 ----------------
+
+The Type 3254 relies on performance maps to evaluate the heat pump performance.
+Therefore, performance maps must be provided in the form of
+*performance files*—one for each operating mode.
+Those performance files must follow a specific format, detailed below.
+Adequately formatting the performance file can be cumbersome, and sometimes
+performance data is insufficient to cover all of the performance map quantities,
+as is genenrally the case with manufacturer data.
+Fortunately, there is a `preprocessing tool <https://costa.readthedocs.io>`_
+available to remedy both of those problems.
+
+Performance maps are represented as multidimensional arrays,
+each dimension corresponding to a certain input quantity
+and having a certain number of entries.
+The performance maps input quantities must include
+
+- the room dry-bulb temperature,
+- the outdoor dry-bulb temperature,
+- the normalized indoor volumetric air flow rate,
+- the normalized compressor frequency.
+
+Cooling performance maps must also include the room wet-bulb temperature,
+to determine the sensible and latent capacity fractions.
+This means that heating performance maps have four dimensions,
+while cooling performance maps have five.
+Regarding the outputs, heating performance maps must provide values for the
+total input power and the total heating capacity.
+Cooling performance maps must also provide the total input power,
+along with the sensible and latent capacities.
+
+Below are two examples of performance files,
+one for cooling and one for heating mode.
+Because there are many dimensions involved, performance files are ususally quite
+long, so only the first few lines are shown.
+The performance file begins by providing the dimensions of the performance map,
+along with the operating range associated with each input quantity.
+Then, it specifies the entries along each dimension,
+and finally the output values for every combination of the specified entries.
+Note that the input quantities must always be specified in the same order
+(room dry-bulb temperature first, then room wet-bulb temperature in cooling
+mode, then outdoor temperature, etc.).
+The firsts columns contain the entries combinations of each input quantity,
+with the rightmost quantity (the frequency) varying first.
+This ensures that the outut values are provided in the right order.
+
+.. _cooling performance file:
+
+.. code-block::
+   :linenos:
+   :caption: Example of cooling performance file.
+
+   !# This is a data file for Type 3254. Do not change the format.
+   !# In PARTICULAR, LINES STARTING WITH !# MUST BE LEFT IN THE FILE AT THEIR LOCATION.
+   !# Comments within "normal lines" (not starting with !#) are optional but the data must be there.
+   !#
+   !# Independent variables
+   !#
+   !# Number of Tdbr data points, lower bound, upper bound
+      6 17.8 32.2
+   !# Number of Twbr data points, lower bound, upper bound
+      6 12.2 22.8
+   !# Number of Tdbo data points, lower bound, upper bound
+      12 -10.0 46.0
+   !# Number of AFR data points, lower bound, upper bound
+      2 1e-05 1.0
+   !# Number of freq data points, lower bound, upper bound
+      14 0 1.4
+   !# Tdbr values
+      17.8 21.1 23.9 26.7 29.4 32.2
+   !# Twbr values
+      12.2 15.6 17.2 19.4 21.7 22.8
+   !# Tdbo values
+      -10.0 -5.0 0.0 5.0 10.0 15.0 19.4 25.0 30.6 35.0 40.0 46.0
+   !# AFR values
+      1e-05 1.0
+   !# freq values
+      0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4
+   !#
+   !# Performance map
+   !#
+   !#	Tdbr	Twbr	Tdbo	AFR	freq	power	      sensible_capacity	latent_capacity
+   	17.8	12.2	-10.0	1e-05	0.1	0.0032678034	0.0078270881	0.0095924383
+   	17.8	12.2	-10.0	1e-05	0.2	0.015247431	0.0365067728	0.0447406448
+   	17.8	12.2	-10.0	1e-05	0.3	0.0370154551	0.0862034025	0.1056460355
+   	17.8	12.2	-10.0	1e-05	0.4	0.0683302257	0.148510872	0.1820065612
+   	17.8	12.2	-10.0	1e-05	0.5	0.1080097759	0.211626558	0.2593575915
+   	17.8	12.2	-10.0	1e-05	0.6	0.1541484803	0.2658985541	0.3258702935
+   	17.8	12.2	-10.0	1e-05	0.7	0.2043652562	0.3075138351	0.3768716382
+   	17.8	12.2	-10.0	1e-05	0.8	0.2560852354	0.3384178314	0.4147458357
+   	17.8	12.2	-10.0	1e-05	0.9	0.3068232438	0.363399964	0.4453625305
+   	17.8	12.2	-10.0	1e-05	1.0	0.3544303797	0.386779851	0.4740156035
+   	17.8	12.2	-10.0	1e-05	1.1	0.3972710888	0.4105953643	0.5032025554
+   	17.8	12.2	-10.0	1e-05	1.2	0.4343122105	0.4346359002	0.5326652823
+   	17.8	12.2	-10.0	1e-05	1.3	0.4651227291	0.4575091829	0.5606974894
+   	17.8	12.2	-10.0	1e-05	1.4	0.4897987153	0.4777544533	0.5855089526
+   	17.8	12.2	-10.0	1.0	0.1	0.0032678034	0.0078270881	0.0095924383
+   	17.8	12.2	-10.0	1.0	0.2	0.015247431	0.0365067728	0.0447406448
+   	17.8	12.2	-10.0	1.0	0.3	0.0370154551	0.0862034025	0.1056460355
+   	17.8	12.2	-10.0	1.0	0.4	0.0683302257	0.148510872	0.1820065612
+   	17.8	12.2	-10.0	1.0	0.5	0.1080097759	0.211626558	0.2593575915
+   	17.8	12.2	-10.0	1.0	0.6	0.1541484803	0.2658985541	0.3258702935
+   	17.8	12.2	-10.0	1.0	0.7	0.2043652562	0.3075138351	0.3768716382
+   	17.8	12.2	-10.0	1.0	0.8	0.2560852354	0.3384178314	0.4147458357
+   	17.8	12.2	-10.0	1.0	0.9	0.3068232438	0.363399964	0.4453625305
+   	17.8	12.2	-10.0	1.0	1.0	0.3544303797	0.386779851	0.4740156035
+   	17.8	12.2	-10.0	1.0	1.1	0.3972710888	0.4105953643	0.5032025554
+   	17.8	12.2	-10.0	1.0	1.2	0.4343122105	0.4346359002	0.5326652823
+   	17.8	12.2	-10.0	1.0	1.3	0.4651227291	0.4575091829	0.5606974894
+   	17.8	12.2	-10.0	1.0	1.4	0.4897987153	0.4777544533	0.5855089526
+   	17.8	12.2	-5.0	1e-05	0.1	0.0038513398	0.0077754241	0.0095291219
+   	17.8	12.2	-5.0	1e-05	0.2	0.0179701865	0.036265804	0.044445327
+
+|
+
+.. _heating performance file:
+
+.. code-block::
+   :linenos:
+   :caption: Example of heating performance file.
+
+   !# This is a data file for Type 3254. Do not change the format.
+   !# In PARTICULAR, LINES STARTING WITH !# MUST BE LEFT IN THE FILE AT THEIR LOCATION.
+   !# Comments within "normal lines" (not starting with !#) are optional but the data must be there.
+   !#
+   !# Independent variables
+   !#
+   !# Number of Tdbr data points, lower bound, upper bound
+      4 15.6 23.9
+   !# Number of Tdbo data points, lower bound, upper bound
+      10 -26.1 15.0
+   !# Number of AFR data points, lower bound, upper bound
+      2 1e-05 1.0
+   !# Number of freq data points, lower bound, upper bound
+      20 0 2
+   !# Tdbr values
+      15.6 18.3 21.1 23.9
+   !# Tdbo values
+      -26.1 -20.6 -15.0 -10.0 -5.0 0.0 5.0 8.3 10.0 15.0
+   !# AFR values
+      1e-05 1.0
+   !# freq values
+      0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0
+   !#
+   !# Performance map
+   !#
+   !#	Tdbr	Tdbo	AFR	freq	power	        capacity
+   	15.6	-26.1	1e-05	0.1	0.003178591	0.0025479775
+   	15.6	-26.1	1e-05	0.2	0.0186176684	0.0149240341
+   	15.6	-26.1	1e-05	0.3	0.0520713887	0.0417407361
+   	15.6	-26.1	1e-05	0.4	0.1072392615	0.0859636323
+   	15.6	-26.1	1e-05	0.5	0.1861736662	0.1492379224
+   	15.6	-26.1	1e-05	0.6	0.2892808725	0.2305285764
+   	15.6	-26.1	1e-05	0.7	0.4153039359	0.3189541754
+   	15.6	-26.1	1e-05	0.8	0.5613908536	0.4028984669
+   	15.6	-26.1	1e-05	0.9	0.723289038	0.4733228775
+   	15.6	-26.1	1e-05	1.0	0.8956723774	0.5262791482
+   	15.6	-26.1	1e-05	1.1	1.0725789877	0.5634360902
+   	15.6	-26.1	1e-05	1.2	1.2479148976	0.5901976742
+   	15.6	-26.1	1e-05	1.3	1.4159640763	0.612731807
+   	15.6	-26.1	1e-05	1.4	1.5718411744	0.6355189604
+   	15.6	-26.1	1e-05	1.5	1.7118311746	0.6603478707
+   	15.6	-26.1	1e-05	1.6	1.833578394	0.6867006008
+   	15.6	-26.1	1e-05	1.7	1.9361121244	0.7128479986
+   	15.6	-26.1	1e-05	1.8	2.0197222658	0.7369319946
+   	15.6	-26.1	1e-05	1.9	2.0857201122	0.757631318
+   	15.6	-26.1	1e-05	2.0	2.1361327416	0.7743642738
+   	15.6	-26.1	1.0	0.1	0.003178591	0.0025479775
+   	15.6	-26.1	1.0	0.2	0.0186176684	0.0149240341
+   	15.6	-26.1	1.0	0.3	0.0520713887	0.0417407361
+   	15.6	-26.1	1.0	0.4	0.1072392615	0.0859636323
+   	15.6	-26.1	1.0	0.5	0.1861736662	0.1492379224
+   	15.6	-26.1	1.0	0.6	0.2892808725	0.2305285764
+   	15.6	-26.1	1.0	0.7	0.4153039359	0.3189541754
+   	15.6	-26.1	1.0	0.8	0.5613908536	0.4028984669
+   	15.6	-26.1	1.0	0.9	0.723289038	0.4733228775
+   	15.6	-26.1	1.0	1.0	0.8956723774	0.5262791482
+   	15.6	-26.1	1.0	1.1	1.0725789877	0.5634360902
+   	15.6	-26.1	1.0	1.2	1.2479148976	0.5901976742
+   	15.6	-26.1	1.0	1.3	1.4159640763	0.612731807
+   	15.6	-26.1	1.0	1.4	1.5718411744	0.6355189604

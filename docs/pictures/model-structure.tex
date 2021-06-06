@@ -1,0 +1,61 @@
+\documentclass{standalone}
+
+\input{preamble}
+
+\usetikzlibrary{backgrounds, fit}
+
+
+\begin{document}
+
+\begin{pic}[thick]
+
+\tikzstyle{link} = [-latex, thick]
+
+\node (assy) [inner sep=15pt, minimum width=65mm, align=center]
+	{Rest of the TRNSYS assembly\\
+	\small\it Building, weather file, schedules etc.};
+
+\node (C) [
+	fill=gray!30, draw=gray!30, align=center,
+	inner sep=10pt, anchor=south west
+]
+	at ($ (assy.north west) + (0,4.5) $) {Controller\\\small\it Type 3223};
+
+\node (HP) [
+	fill=gray!30, draw=gray!30, align=center,
+	inner sep=10pt, anchor=south east
+]
+	at ($ (assy.north east) + (0,2.5) $) {Heat pump\\\small\it Type 3254};
+
+\node (Cout) [ar, rotate=-90, color=gray!30, anchor=south] at (C.east) {};
+\node (HPin) [ar, color=gray!30, anchor=south, rotate=90]
+	at (HP.west) {};
+\node (HPinC) [ar, color=gray!30, anchor=south]
+	at (HP.north) {};
+\node (HPout) [ar, color=gray!30, anchor=south, rotate=180]
+	at (HP.south) {};
+\node (assyout) [ar, color=gray!30, anchor=south]
+	at (assy.north -| HPout) {};
+\node (assyin) [ar, color=gray!30, anchor=south]
+	at ($ (assyout.south) !2! (assy.north) $) {};
+\node (Cin) [ar, color=gray!30, anchor=south, rotate=180]
+	at (assyin |- C.south) {};
+
+\draw [link] (assyin) -- (Cin);
+\draw [link] (assyin |- HPin) node [dot] {} -- (HPin);
+\draw [link] (Cout) -| coordinate (CS) (HPinC);
+\node [anchor=south east, inner sep=0pt, yshift=3pt]
+	at (CS) {control signals};
+\draw [link] (HPout) -- node (out) [fill=white, align=center]
+	{model\\outputs} (assyout);
+\node [fill=white, align=center] at (assyin |- out) {model\\inputs};
+
+\begin{scope}[on background layer]
+	\node (model) [fill=gray!10, fit=(C) (HP) (HPout)] {};
+	\filldraw [gray!30] (model.west |- assy.north) rectangle
+						(model.east |- assy.south);
+\end{scope}
+
+\end{pic}
+
+\end{document}

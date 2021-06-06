@@ -1,0 +1,76 @@
+\usepackage{fontspec}
+
+\usepackage{amsmath}
+\usepackage[math-style=ISO]{unicode-math}
+\usepackage{microtype}
+
+\defaultfontfeatures{ Scale=MatchLowercase }
+\setmainfont{Georgia}[Scale = 1.0]
+\setmathfont{Asana Math}
+\setmathfont[
+	range={up,`∏,`∑,`∙,`√,`∞}, script-features={}, sscript-features={}
+]{Georgia}
+\setmathfont[range=it,
+             script-features={}, sscript-features={}
+            ]{Georgia Italic}
+\setmathfont[range=bfup,
+             script-features={}, sscript-features={}
+            ]{Georgia Bold}
+\setmathfont[range=bfit,
+             script-features={}, sscript-features={}
+            ]{Georgia Bold Italic}
+
+\usepackage{adjustbox, siunitx, tikz}
+\usetikzlibrary{calc}
+
+\newenvironment{pic}[1][]{
+	\begin{adjustbox}{scale=1.7}
+	\begin{tikzpicture}[#1]
+}{
+	\end{tikzpicture}
+	\end{adjustbox}
+}
+
+
+\tikzstyle{dot} = [circle, fill, scale=.3]
+\tikzstyle{ar} = [triangle, fill, draw, inner sep=3pt, minimum width=11pt]
+
+% Lengths
+\newlength\tl
+\newlength\as
+\newlength\astl
+\setlength\tl{1.5mm}	% tick length
+\setlength\as{5mm}		% axis shift
+\setlength\astl{\dimexpr \as - \tl \relax}
+
+\makeatletter
+
+\pgfdeclareshape{triangle}{
+	\inheritsavedanchors[from=rectangle]
+	\inheritanchorborder[from=rectangle]
+	\inheritanchor[from=rectangle]{north}
+	\inheritanchor[from=rectangle]{north west}
+	\inheritanchor[from=rectangle]{north east}
+	\inheritanchor[from=rectangle]{center}
+	\inheritanchor[from=rectangle]{west}
+	\inheritanchor[from=rectangle]{east}
+	\inheritanchor[from=rectangle]{mid}
+	\inheritanchor[from=rectangle]{mid west}
+	\inheritanchor[from=rectangle]{mid east}
+	\inheritanchor[from=rectangle]{base}
+	\inheritanchor[from=rectangle]{base west}
+	\inheritanchor[from=rectangle]{base east}
+	\inheritanchor[from=rectangle]{south}
+	\inheritanchor[from=rectangle]{south west}
+	\inheritanchor[from=rectangle]{south east}
+	\backgroundpath{
+		% store lower right in xa/ya and upper right in xb/yb
+		\southwest \pgf@xa=\pgf@x \pgf@ya=\pgf@y
+		\northeast \pgf@xb=\pgf@x \pgf@yb=\pgf@y
+		% construct main path
+		\pgfpathmoveto{\pgfpoint{\pgf@xa}{\pgf@ya}}
+		\pgfpathlineto{\pgfpoint{0.5\pgf@xb+0.5\pgf@xa}{\pgf@yb}}
+		\pgfpathlineto{\pgfpoint{\pgf@xb}{\pgf@ya}}
+		\pgfpathclose}}
+
+\makeatother
