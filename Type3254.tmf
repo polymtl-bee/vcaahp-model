@@ -61,8 +61,9 @@ C
 Temperature
 Return air humidity ratio
 SN
-1
-The absolute humidity ratio of the air entering the indoor unit of the heat pump. This air is typically at room air conditions.
+2
+The absolute humidity ratio of the air entering the indoor unit of the heat pump. This air is typically at room air conditions.
+This input is not considered if parameter 1 is set to 2.
 simple
 real
 1
@@ -76,8 +77,9 @@ real
 Dimensionless
 Return air % RH
 SN
-1
-The percent relative humidity of the air entering the indoor unit of the heat pump. This air is typically at room air conditions.
+2
+The percent relative humidity of the air entering the indoor unit of the heat pump. This air is typically at room air conditions.
+This input is not considered if parameter 1 is set to 4.
 simple
 real
 1
@@ -122,7 +124,7 @@ Flow Rate
 Outdoor air temperature
 SN
 1
-The temperature of the air entering the outdoor unit of the heat pump. This value is typically the ambient temperature.
+The temperature of the air entering the outdoor unit of the heat pump. This value is typically the outdoor air temperature.
 simple
 real
 1
@@ -177,14 +179,14 @@ real
 0.0
 +Inf
 [ ; ]
-0.0
+0.005
 0
 -
 Dimensionless
 Outdoor air relative humidity
 SN
 1
-
+The percent relative humidity of the air entering the outdoor unit of the heat pump.
 simple
 real
 1
@@ -192,14 +194,14 @@ real
 0.0
 100
 [ ; ]
-0.0
+50
 0
 % (base 100)
 Percentage
 Outdoor air pressure
 SN
 1
-
+The absolute pressure of the air entering the outdoor unit of the heat pump.
 simple
 real
 1
@@ -214,7 +216,7 @@ Pressure
 Normalized compressor frequency
 SN
 1
-The frequency of the compressor, to be provided if an external controller is used.
+The frequency of the compressor, normalized by its rated value (parameters 7 and 8).
 simple
 real
 1
@@ -274,7 +276,7 @@ Pressure
 Outlet air flow rate
 SN
 1
-The flow rate of dry air exiting the indoor unit of the heat pump.
+The mass flow rate of dry air exiting the indoor unit of the heat pump.
 simple
 real
 2
@@ -286,22 +288,22 @@ real
 0
 kg/hr
 Flow Rate
-Total cooling rate
+Total cooling capacity
 SN
 1
-The rate at which energy (both sensible and latent)  is removed from the conditioned air stream in cooling mode.
+The rate at which heat (both sensible and latent)  is removed from the conditioned air stream in cooling mode.
 simple
 real
 2
 +
--Inf
+0
 +Inf
 [ ; ]
 0
 0
 kJ/hr
 Power
-Sensible cooling rate
+Sensible cooling capacity
 SN
 1
 The rate at which sensible heat is removed from the conditioned air stream in cooling mode.
@@ -309,22 +311,22 @@ simple
 real
 2
 +
--Inf
+0
 +Inf
 [ ; ]
 0
 0
 kJ/hr
 Power
-Latent cooling rate
+Latent cooling capacity
 SN
 1
-The rate at which latent energy is removed from the conditoned air stream in cooling mode.
+The rate at which latent heat is removed from the conditoned air stream in cooling mode.
 simple
 real
 2
 +
--Inf
+0
 +Inf
 [ ; ]
 0
@@ -334,27 +336,27 @@ Power
 Heat rejection rate
 SN
 1
-The rate at which heat is rejected to the ambient from the outdoor unit during cooling operation.
+The rate at which heat is rejected to the outdoor air from the outdoor unit in cooling mode.
 simple
 real
 2
 +
--Inf
+0
 +Inf
 [ ; ]
 0
 0
 kJ/hr
 Power
-Total heating rate
+Total heating capacity
 SN
 1
-
+The rate at which heat is added to the indoor unit air stream in heating mode.
 simple
 real
 2
 +
--Inf
+0
 +Inf
 [ ; ]
 0
@@ -364,12 +366,12 @@ Power
 Heat absorption rate
 SN
 1
-
+The rate at which heat is absorbed from the outdoor air by the outdoor unit in heating mode.
 simple
 real
 2
 +
--Inf
+0
 +Inf
 [ ; ]
 0
@@ -379,12 +381,12 @@ Power
 Total power consumption
 SN
 1
-The total power input (compressor + indoor fan + outdoor fan ) required to operate the heat pump.
+The total power input (compressor, indoor fan and outdoor fan) required to operate the heat pump.
 simple
 real
 2
 +
--Inf
+0
 +Inf
 [ ; ]
 0
@@ -394,7 +396,7 @@ Power
 COP
 SN
 1
-The coefficient of performance of the heat pump.
+The coefficient of performance of the heat pump, which is the ratio between the capacity (heating or cooling depending on the operating mode) and the total input power.
 simple
 real
 2
@@ -409,7 +411,7 @@ Dimensionless
 EER
 SN
 1
-The Energy Efficiency Rating of the heat pump during the timestep.
+The Energy Efficiency Rating: same as the COP, but with the capacity expressed in BTU/h and the input power expressed in watts.
 simple
 real
 2
@@ -424,12 +426,12 @@ Dimensionless
 Indoor fan power
 SN
 1
-The rate at which the heat pump indoor fan is consuming energy.
+The rate at which the indoorunit fan is consuming energy.
 simple
 real
 2
 +
--Inf
+0
 +Inf
 [ ; ]
 0
@@ -439,12 +441,12 @@ Power
 Outdoor fan power
 SN
 1
-The rate at which the heat pump outdoor fan is consuming energy.
+The rate at which the outdoor unit fan is consuming energy.
 simple
 real
 2
 +
--Inf
+0
 +Inf
 [ ; ]
 0
@@ -459,7 +461,7 @@ simple
 real
 2
 +
--Inf
+0
 +Inf
 [ ; ]
 0
@@ -469,7 +471,7 @@ Power
 Compressor frequency
 SN
 1
-
+The actual frequency of the heat pump compressor. It might be different from the one asked by the compressor if the heat pump shuts down (see output 22). It has the same units as the rated compressor frequency.
 simple
 real
 2
@@ -514,7 +516,7 @@ Flow Rate
 Rated total cooling power
 SN
 1
-The power of the heat pump at its rated conditions in cooling mode. Make sure the data file corresponds to the same rating conditions.
+The power of the heat pump at its rated conditions in cooling mode. Make sure the power in the cooling performance file is normalized with this value.
 simple
 real
 3
@@ -529,7 +531,7 @@ Power
 Rated cooling capacity
 SN
 1
-The sensible cooling capacity of the heat pump at its rated conditions. Make sure the data file corresponds to the same rating conditions.
+The sensible cooling capacity of the heat pump at its rated conditions. Make sure the capacity in the cooling performance file is normalized with this value.
 simple
 real
 3
@@ -544,7 +546,7 @@ Power
 Rated total heating power
 SN
 1
-
+The input power of the heat pump at its rated conditions in heating mode. Make sure the power in the heating performance file is normalized with this value.
 simple
 real
 3
@@ -559,7 +561,7 @@ Power
 Rated heating capacity
 SN
 1
-
+The heating capacity of the heat pump at its rated conditions. Make sure the capacity in the heating performance file is normalized with this value.
 simple
 real
 3
@@ -574,7 +576,7 @@ Power
 Rated inlet air flow rate
 SN
 1
-The rated value of the air flow rate entering the indoor unit of the heat pump. Make sure the data file corresponds to the same rating conditions.
+The rated value of the air volumetric flow rate entering the indoor unit of the heat pump.
 simple
 real
 3
@@ -589,7 +591,7 @@ Volumetric Flow Rate
 Rated cooling frequency
 SN
 1
-The frequency of the heat pump compressor at its rated conditions. Make sure the data file corresponds to the same rating conditions.
+The frequency of the heat pump compressor at its rated conditions.
 simple
 real
 3
@@ -604,8 +606,8 @@ Frequency
 Indoor unit fan speed ratio
 SN
 2
-To be provided by the controller.
-If negative, the return air mass flow rate input will be used instead
+The indoor unit fan speed, normalized by its rated value. It is also the value of the normalized air flow rate.
+If negative, the return air mass flow rate input will be used instead.
 simple
 real
 1
@@ -619,8 +621,9 @@ real
 Dimensionless
 Operating mode
 SN
-3
+4
 Setting for heating/cooling mode :
+
 0 = cooling mode
 1 = heating mode
 simple
@@ -636,11 +639,12 @@ integer
 Dimensionless
 Defrost mode
 SN
-4
--1 = Automatic defrost cycles
-0 = Always set to defrost mode
-1 = Always set to recovery mode
-2 = Always set to steady-state mode
+5
+Setting for heating/cooling mode:
+
+0 = Defrost mode
+1 = Recovery mode
+2 = Steady-state mode
 simple
 integer
 1
@@ -655,7 +659,7 @@ Dimensionless
 Recovery penalty
 SN
 1
-
+Correction factor for the heating capacity when the heat pump operates in recovery mode.
 simple
 real
 1
@@ -666,11 +670,11 @@ real
 0.0
 0
 -
-dimensionless
+Dimensionless
 Rated heating frequency
 SN
 1
-
+The rated frequency of the heat pump compressor when operating in heating mode.
 simple
 real
 3
@@ -716,7 +720,7 @@ Backup heater capacity
 SN
 2
 The capacity of the backup heater that is used when the heat pump cannot work due to extreme conditions.
-If the value is -1, the same value as the heating rated capacity will be used.
+If the value is negative, the same value as the heating rated capacity will be used.
 simple
 real
 3
@@ -746,7 +750,7 @@ Dimensionless
 Logical Unit - heating mode
 SN
 1
-
+The logical unit which will be ASSIGNed to the data file which contains the heat pump heating performance data.
 simple
 integer
 3
@@ -757,11 +761,13 @@ integer
 31
 0
 -
-dimensionless
+Dimensionless
 Defrost mode
 SN
-1
-
+3
+0 = Defrost mode
+1 = Recovery mode
+2 = Steady-state mode
 simple
 integer
 2
@@ -772,13 +778,13 @@ integer
 0
 0
 -
-dimensionless
+Dimensionless
 Force heat pump shutdown
 SN
 1
 Returns 0 if the heat pump works noramlly, and 1 if it is shutdown because of an invalid set of input conditions.
 simple
-real
+integer
 2
 +
 0

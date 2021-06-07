@@ -49,9 +49,10 @@
 !  2 | AFR          | Normalized air flow rate / fan speed ratio    | -             | -
 !  3 | mode         | 0 = cooling mode                              | -             | -
 !                   | 1 = heating mode                              |               |
-!  4 | defrost_mode | 0 = defrost (off) mode                        |               |
+!  4 | defrost_mode | 0 = defrost (off) mode                        | -             | -
 !                   | 1 = recovery mode (transient)                 |               |
 !                   | 2 = steady-state mode                         |               |
+!  5 | recov_penalty| capacity penalty factor for recovery mode     | -             | -
 ! --------------------------------------------------------------------------------------------------
 
 ! Author: Gregor Strugala
@@ -385,17 +386,17 @@ return
             call SkipLines(LUcool, 1)
         read(LUc, *) s(Ni)%nZones, s(Ni)%nAFR2
             call SkipLines(LUcool, 6)
-        allocate(s(Ni)%Toa2(s(Ni)%nZones))
-        allocate(s(Ni)%db2(s(Ni)%nZones))
+        allocate(s(Ni)%Toa2(s(Ni)%nZones - 1))
+        allocate(s(Ni)%db2(s(Ni)%nZones - 1))
         allocate(s(Ni)%AFR2(s(Ni)%nAFR2))
-        allocate(s(Ni)%f2(s(Ni)%nZones + 1, s(Ni)%nAFR2))
-        do i = 1, s(Ni)%nZones
+        allocate(s(Ni)%f2(s(Ni)%nZones, s(Ni)%nAFR2))
+        do i = 1, s(Ni)%nZones - 1
             read(LUc, *) s(Ni)%Toa2(i), s(Ni)%db2(i)
         end do
             call SkipLines(LUcool, 1)
         read(LUc, *) (s(Ni)%AFR2(j), j = 1, s(Ni)%nAFR2)
             call SkipLines(LUcool, 1)
-        do i = 1, s(Ni)%nZones + 1
+        do i = 1, s(Ni)%nZones
             read(LUc, *) (s(Ni)%f2(i, j), j = 1, s(Ni)%nAFR2)
         end do
 
@@ -419,6 +420,12 @@ return
 
 
     subroutine SkipLines(LUs, N)
+    ! Skip lines in several files at once
+    !
+    ! Inputs
+    !   LUs (integer array) : logical unit of each file
+    !                         where lines must be skipped.
+    !   N (integer) : number of lines to skip.
         integer, intent(in) :: LUs(:)
         integer :: i, j, N
         do i = 1, size(LUs)
@@ -430,12 +437,12 @@ return
 
 
     function GetLevel(centers, deadbands, value, old_level, hyst_dir) result(level)
-    ! GetLevel determines the output (called the "level") of an hysteresis function
-    ! based on an input value and the old level. The hysteresis is characterised by
+    ! Determine the output (called the "level") of an hysteresis function based
+    ! on an input value and the old level. The hysteresis is characterised by
     ! its center(s), deadband(s), and its direction (ascending or descending).
-    ! There can be several cascading hysteresis; in that case all centers and deadbands
-    ! must be given as arrays. An exemple with two ascending hystersis loops would look
-    ! like this :
+    ! There can be several cascading hysteresis; in that case the centers and
+    ! deadbands must be given as arrays. An exemple with two ascending hystersis
+    ! loops would look like this :
     !                                  <---deadband2--->
     !                                  ---------------------    Level 3
     !                                  |       |       |
@@ -454,9 +461,10 @@ return
     !   value (real(wp)) : input value.
     !   old_level (integer) : the output value at the previous timestep
     !                         (NOT at the previous iteration).
-    !   hyst_dir (integer) : direction of the hysteresis loops (0 = descending, 1 = ascending) A VERIFIER
+    !   hyst_dir (integer) : direction of the hysteresis loops
+    !                        (0 = descending, 1 = ascending)
     !
-    ! Outputs
+    ! Output
     !   level (integer) : the output value for the current timestep.
         real(wp), intent(in) :: centers(:), deadbands(:), value
         integer, intent(in) :: old_level, hyst_dir
@@ -481,19 +489,25 @@ return
         ! FindLevel works for ascending hysteresis -> adjust level if descending
         if (hyst_dir == 0) level = size(centers) + 2 - level
         
-        ! If the value is within a deadband, adjust the level based on the old level.
+        ! If the value is within a deadband, adjust the level based on the old level.        
         if (valueInLowDb) then
-            if ( old_level < level .and. hyst_dir == 1 ) level = level - 1
-            if ( old_level > level .and. hyst_dir == 0 ) level = level + 1
+            if ( old_level < level .and. hyst_dir == 1 ) then
+                level = level - 1
+            else if ( old_level > level .and. hyst_dir == 0 ) then
+                level = level + 1
+            end if
         else if (valueInHighDb) then
-            if ( old_level > level .and. hyst_dir == 1 ) level = level + 1
-            if ( old_level < level .and. hyst_dir == 0 ) level = level - 1
+            if ( old_level > level .and. hyst_dir == 1 ) then
+                level = level + 1
+            else if ( old_level < level .and. hyst_dir == 0 ) then
+                level = level - 1
+            end if
         end if
     end function GetLevel
 
     
     function FindLevel(array, value, extent) result(level)
-    ! FindLevel finds the level among the (ordered) array of centers.
+    ! Find the level among the (ordered) array of centers.
     ! If the value v is located in the interval A(i) < v < A(i+1)
     ! where A is the array, the function returns i+1. If v = A(i),
     ! then it returns i. Finally, if v < A(1), the function returns 1,
@@ -504,7 +518,7 @@ return
     !   value (real(wp)) : value to search in the array.
     !   extent (integer) : size of the array.
     !
-    ! Outputs
+    ! Output
     !   level (integer) : level of the value in the array.
         real(wp), intent(in) :: array(:), value
         integer, intent(in) :: extent
@@ -529,7 +543,7 @@ return
 
 
     subroutine SetDefrostMode(defrost_mode)
-    ! SetDefrostMode chooses the defrost mode based on different parameters
+    ! Choose the defrost mode based on different parameters
     ! located in the global scope.
     !
     ! Inputs
@@ -635,14 +649,14 @@ return
 
     
     function RecoveryPenalty(t_ld, t_rec) result(penalty)
-    ! RecoveryPenalty computes the capacity correction factor in recovery mode,
+    ! Compute the capacity correction factor in recovery mode,
     ! after the defrost is finished.
     !
     ! Inputs
     !   t_ld (real(wp)) : the time since the end of the last defrost.
     !   t_rec (real(wp)) : the duration of the recovery (between defrost and steady-state).
     !
-    ! Outputs
+    ! Output
     !   penalty (real(wp)) : the recovery penalty (between 0 and 1).
         real(wp), intent(in) :: t_ld, t_rec
         real(wp) :: penalty, t_dimless
