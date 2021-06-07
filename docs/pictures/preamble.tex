@@ -20,11 +20,11 @@
              script-features={}, sscript-features={}
             ]{Georgia Bold Italic}
 
-\usepackage{adjustbox, siunitx, tikz}
+\usepackage{adjustbox, siunitx, tikz, xparse}
 \usetikzlibrary{calc}
 
-\newenvironment{pic}[1][]{
-	\begin{adjustbox}{scale=1.7}
+\NewDocumentEnvironment{pic}{o O{1.7}}{
+	\begin{adjustbox}{scale=#2}
 	\begin{tikzpicture}[#1]
 }{
 	\end{tikzpicture}

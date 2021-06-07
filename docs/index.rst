@@ -12,10 +12,29 @@ to short time step simulations—ideally below 5 minutes.
 
    Structure of the VCAAHP model.
 
-
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
 
    type3223/type3223
    type3254/type3254
+
+
+Features
+--------
+
+- Heating and cooling mode operation
+- Compressor frequency modulation with a dedicated controller
+- Defrost cycles in heating mode
+- Sensible and latent cooling
+
+
+Support
+-------
+
+If you encounter bugs or are having problems, please open an issue in the
+`issue tracker <https://github.com/polymtl-bee/vcaahp-model/issues>`_
+and submit a minimal working example in the form of a deck file
+to highlight what is not working.
+
+You can ask questions about the model in the Q&A Discussions.

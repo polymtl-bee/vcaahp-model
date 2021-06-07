@@ -61,9 +61,10 @@ Inputs
    entering the outdoor unit of the heat pump.
 
 **10. Normalized compressor frequency** : real :math:`\geq 0`
-   The frequency of the compressor, normalized by its rated value.
+   The frequency of the compressor, normalized by its rated value
+   (:ref:`parameters 7 and 8 <params 3254>`).
 
-**11. Indoor unit fan speed ratio** : real :math:`\geq 0`
+**11. Indoor unit fan speed ratio** : real
    The indoor unit fan speed, normalized by its rated value. It is also
    the value of the normalized air flow rate.
    If negative, the return air mass flow rate input will be used instead.
@@ -125,17 +126,17 @@ Parameters
 **5. Rated heating capacity** : real :math:`\geq 0`
    The heating capacity of the heat pump at its rated conditions.
 
-**6. Rated inlet air mass flow rate** : real :math:`\geq 0`
-   The rated value of the air flow rate
+**6. Rated inlet air flow rate** : real :math:`\geq 0`
+   The rated value of the air volumetric flow rate
    entering the indoor unit of the heat pump.
 
-**7. Rated heating frequency** : real :math:`\geq 0`
-   The rated frequency of the heat pump compressor
-   when operating in heating mode.
-
-**8. Rated cooling frequency** : real :math:`\geq 0`
+**7. Rated cooling frequency** : real :math:`\geq 0`
    The rated frequency of the heat pump compressor
    when operating in cooling mode.
+
+**8. Rated heating frequency** : real :math:`\geq 0`
+   The rated frequency of the heat pump compressor
+   when operating in heating mode.
 
 **9. Indoor fan rated power** : real :math:`\geq 0`
    The rated power of the indoor unit fan.
@@ -148,13 +149,15 @@ Parameters
    due to extreme conditions. If the value is negative,
    the same value as the heating rated capacity will be used.
 
-**12. Logical Unit - cooling mode** : integer
-   The Logical Unit used to read
-   the cooling :ref:`performance file <performance file>`.
+**12. Logical Unit - cooling mode** : integer :math:`\geq 10`
+   The logical unit which will be assigned to the
+   :ref:`data file <cooling performance file>`
+   which contains the heat pump cooling performance data.
 
-**13. Logical Unit - heating mode** : integer
-   The Logical Unit used to read
-   the heating :ref:`performance file <performance file>`.
+**13. Logical Unit - heating mode** : integer :math:`\geq 10`
+   The logical unit which will be assigned to the
+   :ref:`data file <heating performance file>`
+   which contains the heat pump heating performance data.
 
 
 Outputs
@@ -191,16 +194,16 @@ Outputs
    from the conditioned air stream in cooling mode.
 
 **9. Heat rejection rate** : real :math:`\geq 0`
-   The rate at which heat is rejected to the ambient air
+   The rate at which heat is rejected to the outdoor air
    from the outdoor unit in cooling mode.
 
-**10. Total heating rate** : real :math:`\geq 0`
+**10. Total heating capacity** : real :math:`\geq 0`
    The rate at which heat is added to
    the indoor unit air stream in heating mode.
 
 **11. Heat absorption rate** : real :math:`\geq 0`
-   The rate at which heat is absorbed from the ambient air
-   by the outdoor unit in cooling mode.
+   The rate at which heat is absorbed from the outdoor air
+   by the outdoor unit in heating mode.
 
 **12. Total power consumption** : real :math:`\geq 0`
    The total power input (compressor, indoor fan and outdoor fan)
@@ -236,7 +239,7 @@ Outputs
    The mass flow rate of the condensate exiting the indoor unit in cooling mode.
 
 **21. Defrost mode** : integer :math:`\in \{0, 1, 2\}`
-   Setting for defrost mode:
+   The defrost mode of the heat pump.
 
    .. table::
       :align: left

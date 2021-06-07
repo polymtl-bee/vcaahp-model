@@ -49,12 +49,12 @@ Inputs
 **5. Outdoor temperature** : real
    The temperature of the outdoor air.
 
-**6. Minimum control signal** : real :math:`\geq 0`
-   The minimum value of te control signal under which
-   the controller will saturate (it should not be lower than zero).
+**6. Minimum frequency value** : real :math:`\geq 0`
+   The value of the frequency control signal under which
+   the controller will saturate.
 
-**7. Maximum control signal** : real :math:`\geq 0`
-   The maximum value of te control signal under which
+**7. Maximum frequency value** : real :math:`\geq 0`
+   The value of the frequency control signal over which
    the controller will saturate.
 
 **8. Operating mode** : integer :math:`\in \{-1, 0, 1\}`
@@ -103,12 +103,15 @@ Inputs
 
 **13. Tracking time constant** : real :math:`\geq 0`
    Tracking time constant :math:`\tau_t` for the anti-windup.
+   This is used to decrease the integral action
+   whenever the control variable (i.e. the frequency) is saturated.
    The tracking gain will be the PI gain divided by this value;
    if :math:`k_c` is the PI gain, then the tracking gain is
    :math:`k_t = \frac{k_c}{\tau_t}`
    High values of time tracking time will thus result in low tracking gains.
    The only exception is when the tracking time is set to zero,
-   which disables the tracking action (i.e. no anti-windup).
+   which disables the tracking action (i.e. no anti-windup). Providing
+   a negative tracking time will set it to the same value as the integral time.
 
 **14. Proportional setpoint weight** : real :math:`\geq 0`
    The weight of the setpoint in the proportional error.
@@ -120,25 +123,33 @@ Parameters
 ----------
 
 **1. Operating mode deadband** : real :math:`\geq 0`
-   Value of the deadband to prevent oscillations of the operating mode
-   (when automatic selection is enabled).
+   The width of the error signal deadband (centered on :math:`0`) in which
+   the operating mode will keep its previous value if set to auto
+   (:math:`\text{input 8} = -1`), to avoid oscillations.
 
 **2. Minimum fixed operating mode duration** : real :math:`\geq 0`
-   After changing the operating mode, the controller cannot change it back
-   after a duration specified by this parameter; this is to prevent switching
-   back and forth too quickly.
-   To disable this feature, set the duration to zero.
+   The minimum time period during which the operating mode must remain the same.
+   This is to prevent switching back and forth too quickly;
+   to disable this feature, set the duration to zero.
 
-**3. Maximum number of iterations** : integer :math:`> 0`
-   It may happen that the compressor frequency oscillates between two values
-   and therefore prevents convergence. In that case, it will stick to its last
-   value after a certain number of iterations specified by this parameter.
+**3. Monotonous frequency minimum duration**
+   To ensure that the frequency does not oscillates too much, it is forced
+   to be monotonous (or constant) for a duration specified by this parameter.
+   Set the duration to zero to disable this behaviour.
 
-**4. Logical Unit — cooling mode** : integer
-   The Logical Unit used to read the `cooling control file`_.
+**4. Maximum number of iterations** : integer :math:`> 0`
+   Number of iterations after which the controller's output will stick to
+   its current value in order to avoid oscillations and promote convergence.
 
-**5. Logical Unit — heating mode** : integer
-   The Logical Unit used to read the `heating control file`_.
+**5. Logical Unit — cooling mode** : integer :math:`\geq 10`
+   The logical unit which will be assigned to the
+   :ref:`data file <cooling control file>`
+   which contains the heat pump control parameters for cooling mode.
+
+**6. Logical Unit — heating mode** : integer :math:`\geq 10`
+   The logical unit which will be assigned to the
+   :ref:`data file <heating control file>`
+   which contains the heat pump control parameters for heating mode.
 
 
 .. _outputs 3223:
