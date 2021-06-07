@@ -39,8 +39,8 @@
 !  4 | PelhRated    | Rated total heating power                     | kJ/h          | kJ/h
 !  5 | QhRated      | Rated heating capacity                        | kJ/h          | kJ/h
 !  6 | AFRrated     | Rated inlet air mass flow rate                | kg/h          | kg/h
-!  7 | freqRatedHeat| Rated heating frequency                       | 1/s           | 1/s
-!  8 | freqRatedCool| Rated cooling frequency                       | 1/s           | 1/s
+!  7 | freqRatedCool| Rated cooling frequency                       | 1/s           | 1/s
+!  8 | freqRatedHeat| Rated heating frequency                       | 1/s           | 1/s
 !  9 | PfanRatedIn  | Indoor fan rated power                        | kJ/h          | kJ/h
 ! 10 | PfanRatedOut | Outdoor fan rated power                       | kJ/h          | kJ/h
 ! 11 | backupHeat   | Backup heater capacity                        | kJ/h          | kJ/h
@@ -125,7 +125,7 @@ real(wp) :: Tr, wr, RHr, mDot, AFR, pr, Toa, woa, RHoa, poa, freq  ! Inputs
 integer :: mode, defrost_mode = 1  ! assume that the heat pump starts up at the beginning -> start with transient state
 integer :: psymode, LUcool, LUheat  ! Parameters
 real(wp) :: PelcRated, QcRated, PelhRated, QhRated, AFRrated ! Parameters (rated values)
-real(wp) :: freqRatedh, freqRatedc, PfanRatedIn, PfanRatedOut, backupHeat
+real(wp) :: freqRatedCool, freqRatedHeat, PfanRatedIn, PfanRatedOut, backupHeat
 real(wp) :: Ts, ws, RHs, ps  ! Outputs (supply conditions)
 real(wp) :: Pel, Qc, Qcs, Qcl, Qrej, Qh, Qabs, Pcomp, PfanIn, PfanOut  ! Outputs (heat and power)
 real(wp) :: fComp, COP, EER, Tc, cmfr, recov_penalty  ! Outputs (misc)
@@ -188,7 +188,7 @@ endif
 
 
 call GetInputValues()
-fComp = freq * ((1-mode) * freqRatedc + mode * freqRatedh)
+fComp = freq * ((1-mode) * freqRatedCool + mode * freqRatedHeat)
 shutdown = .false.
 if (ErrorFound()) return
 
@@ -466,6 +466,12 @@ return
     
     
     subroutine SkipLines(LUs, N)
+    ! Skip lines in several files at once
+    !
+    ! Inputs
+    !   LUs (integer array) : logical unit of each file
+    !                         where lines must be skipped.
+    !   N (integer) : number of lines to skip.
         integer, intent(in) :: LUs(:), N
         integer :: i, j
         do i = 1, size(LUs)
@@ -660,7 +666,7 @@ return
     !   idx (integer array with the same length as the array shape) : index of the element to retrieve.
     !
     ! Output
-    !   value : element retireved at index idx.
+    !   value (real(wp)) : element retireved at index idx.
         integer, intent(in) :: idx(:)
         integer :: mode, i, array_idx
         ! array has a length equal to the number of elements in the appropriate performance map
@@ -732,7 +738,7 @@ return
     !
     ! Outputs (given as a logical array of size 2)
     !   sum (logical) : a + b + carry_in (+ being exclusive or).
-    !   carry_out : carry for the next stage.
+    !   carry_out (logical) : carry for the next stage.
         implicit none
         logical, intent(in) :: a, b, carry_in
         logical :: sum, carry_out, results(2)
@@ -745,7 +751,7 @@ return
     subroutine Increment(C)
     ! Increment a binary counter.
     !
-    ! Inputs
+    ! Input
     !   C (logical array) : the counter to increment,
     !                       with the rightmost bit being the lower level.
         implicit none
@@ -774,7 +780,9 @@ return
     !
     ! Inputs
     !   defrost_mode (integer) : the defrost mode: defrost(0), recovery (1)
-    !                            or steady-state (2)
+    !                            or steady-state (2).
+    !   recov_penalty (real(wp)) : the correction factor for recovery mode.
+    !
     ! Output
     !   correction (real(wp) array) : array containing the power correction
     !                                 factor at (1) and the capacity correction
@@ -937,8 +945,8 @@ return
         PelhRated = GetParameterValue(4)
         QhRated = GetParameterValue(5)
         AFRrated = GetParameterValue(6)
-        freqRatedc = GetParameterValue(7)
-        freqRatedh = GetParameterValue(8)
+        freqRatedCool = GetParameterValue(7)
+        freqRatedHeat = GetParameterValue(8)
         PfanRatedIn = GetParameterValue(9)
         PfanRatedOut = GetParameterValue(10)
         backupHeat = GetParameterValue(11)

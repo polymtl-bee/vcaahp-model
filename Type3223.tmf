@@ -62,7 +62,7 @@ Dimensionless
 Temperature setpoint
 SN
 1
-Command signal that sets the target temperature.
+Command signal that sets the target room temperature.
 simple
 real
 1
@@ -111,7 +111,7 @@ Temperature
 Outdoor temperature
 SN
 1
-
+The temperature of the outdoor air.
 simple
 real
 1
@@ -123,30 +123,30 @@ real
 0
 C
 Temperature
-Minimum control signal
+Minimum frequency value
 SN
 1
-The minimum value of te control signal under which the controller will saturate (it should not be lower than zero).
+The value of the frequency control signal under which the controller will saturate.
 simple
 real
 1
 +
--Inf
+0
 +Inf
 [ ; ]
 0
 0
 -
 Dimensionless
-Maximum control signal
+Maximum frequency value
 SN
 1
-
+The value of the frequency control signal under which the controller will saturate.
 simple
 real
 1
 +
--Inf
+0
 +Inf
 [ ; ]
 1
@@ -172,8 +172,14 @@ integer
 Dimensionless
 Defrost mode override
 SN
-1
-
+7
+Manual defrost mode setting:
+
+0 = defrost mode (no heat output)
+1 = recovery mode
+2 = steady-state mode
+
+A value of -1 triggers automatic defrost cycles.
 simple
 integer
 1
@@ -184,11 +190,11 @@ integer
 -1
 0
 -
-dimensionless
+Dimensionless
 Number of frequency levels
 SN
 1
-The number of values N that the command signal can take between its minimum and maximum values (inputs 4 and 5, respectively). The command signal levels are evenly spaced, i.e. the i-th value is equal to i * (max - min) / N.
+The number of values N that the frequency control signal (input 1) can take between its minimum and maximum values (inputs 4 and 5, respectively). The command signal levels are evenly spaced, i.e. the i-th value is equal to fmin + i * (fmax - fmin) / N.
 simple
 integer
 1
@@ -232,8 +238,9 @@ hr
 Time
 Frequency control signal
 SN
-1
-This is the control signal that has to be given as input to the Type3254.
+2
+The frequency control signal to be provided to the Type3254.
+When it is not zero, it is restricted to the interval [input 6, input 7]
 simple
 real
 2
@@ -248,7 +255,7 @@ Dimensionless
 Fan speed ratio
 SN
 1
-
+The fan speed ratio associated with the specified fan speed setting (input 3).
 simple
 real
 2
@@ -259,7 +266,7 @@ real
 0.0
 0
 -
-dimensionless
+Dimensionless
 Operating mode
 SN
 2
@@ -278,9 +285,8 @@ integer
 Dimensionless
 Operating mode deadband
 SN
-2
-The error signal deadband (centered on 0) in which the operating mode will keep
-its previous value if set to auto (-1).
+1
+The width of the error signal deadband (centered on 0) in which the operating mode will keep its previous value if set to auto (input 8 = -1), to avoid oscillations.
 simple
 real
 3
@@ -294,8 +300,9 @@ C
 Temperature
 Fixed mode minimum duration
 SN
-1
-The minimum time period during which the operating mode stays the same.
+2
+The minimum time period during which the operating mode must remain the same.
+To disable this feature, set the duration to zero.
 simple
 real
 3
@@ -340,7 +347,7 @@ Dimensionless
 Logical Unit - cooling mode
 SN
 1
-
+The logical unit which will be assigned to the data file which contains the heat pump control parameters for cooling mode.
 simple
 integer
 3
@@ -351,11 +358,11 @@ integer
 30
 0
 -
-dimensionless
+Dimensionless
 Logical Unit - heating mode
 SN
 1
-
+The logical unit which will be assigned to the data file which contains the heat pump control parameters for heating mode.
 simple
 integer
 3
@@ -366,11 +373,12 @@ integer
 31
 0
 -
-dimensionless
+Dimensionless
 Defrost mode
 SN
-1
-
+2
+If the input 9 is set to 1, 2 or 3, the same value is provided as output.
+If it is set to 0, the defrost mode is selected automatically from the outdoor temperature.
 simple
 integer
 2
@@ -381,11 +389,11 @@ integer
 2
 0
 -
-dimensionless
+Dimensionless
 Recovery penalty
 SN
 1
-
+Correction factor for the heating capacity when the heat pump operates in recovery mode.
 simple
 real
 2
@@ -396,7 +404,7 @@ real
 0.0
 0
 -
-dimensionless
+Dimensionless
 Tracking time
 SN
 3
@@ -416,15 +424,16 @@ hr
 Time
 Proportional setpoint weight
 SN
-2
-Fraction of the setpoint value used in the proportional effect (must be between 0 and 1).
-A low setpoint weight decreases the overshoot following at setpoint change, but will also cause a more sluggish response.
+3
+The weight of the setpoint in the proportional error.
+A low setpoint weight decreases the overshoot following at setpoint change, but will also cause a more sluggish response.
+A higher weight will result in a faster response to a setpoint change, but it will also increase the overshoot.
 simple
 real
 1
 +
 0
-1
++Inf
 [ ; ]
 1
 0
