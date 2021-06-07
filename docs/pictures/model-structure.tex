@@ -1,4 +1,5 @@
 \documentclass{standalone}
+%\documentclass[12pt]{standalone}  % README font size
 
 \input{preamble}
 
@@ -53,8 +54,9 @@
 \node [fill=white, align=center] at (assyin |- out) {model\\inputs};
 
 \begin{scope}[on background layer]
-	\node (model) [fill=gray!10, fit=(C) (HP) (HPout)] {};
-	\filldraw [gray!30] (model.west |- assy.north) rectangle
+	\node (model) [fill=gray!10, draw=gray!10, fit=(C) (HP) (HPout)] {};
+	\fill [white] (model.south west) rectangle (model.east |- assy.north);
+	\fill [gray!30] (model.west |- assy.north) rectangle
 						(model.east |- assy.south);
 \end{scope}
 
